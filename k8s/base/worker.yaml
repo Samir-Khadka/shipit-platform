@@ -22,7 +22,7 @@ spec:
       containers:
         - name: worker
           # NOTE: tag is rewritten to :<sha> by CI on every main push.
-          image: ghcr.io/samir-khadka/shipit-worker:latest
+          image: ghcr.io/samir-khadka/shipit-worker:71c04253282e91b346ec3588c4138e7913ce7bda
           imagePullPolicy: Always
           env:
             - name: API_URL
