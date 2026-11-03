@@ -116,6 +116,17 @@ echo "==> SLO alert rules:"
 $KUBECTL -n monitoring get prometheusrule shipit-api-slo -o custom-columns=NAME:.metadata.name 2>/dev/null \
   || echo "    (shipit-api-slo not visible yet — observability-config may still be syncing)"
 
+# 6. Chaos Mesh (Phase 5) ----------------------------------------------------
+# The tooling installs via ArgoCD (sync wave 3, after the Kyverno policies
+# that carve out its namespace). Experiments are NOT synced — they live in
+# k8s/chaos/ and are applied by hand during a demo.
+echo "==> Waiting for Chaos Mesh (installed by ArgoCD)..."
+$KUBECTL -n argocd wait --for=jsonpath='{.status.health.status}'=Healthy \
+  --timeout=600s "application/chaos-mesh" \
+  || echo "WARN: chaos-mesh not Healthy yet — check the ArgoCD UI"
+$KUBECTL -n chaos-mesh get pods 2>/dev/null | head -5 \
+  || echo "    (chaos-mesh pods not visible yet)"
+
 echo ""
 echo "Done. Useful next steps:"
 echo "  ArgoCD UI:      k3s kubectl -n argocd port-forward svc/argocd-server 8080:443"
@@ -126,6 +137,10 @@ echo "  API version:    k3s kubectl -n shipit port-forward svc/shipit-api 8000:8
 echo "                  then: curl localhost:8000/version"
 echo "  Canary demo:    see scripts/demo-canary.md — push a good build, then a"
 echo "                  bad one (FAULT_RATE=0.3), and watch Flagger roll it back"
+echo "  Chaos demo:     Chaos Mesh is installed (k8s/apps/chaos-mesh.yaml); experiments"
+echo "                  are applied by hand, never synced:"
+echo "                    k3s kubectl apply -f k8s/chaos/pod-kill-api.yaml"
+echo "                    k3s kubectl apply -f k8s/chaos/network-delay-api.yaml"
 echo "  linkerd-viz:    k3s kubectl -n linkerd-viz port-forward svc/web 8084:8084"
 echo "                  then open https://localhost:8084 (dashboard)"
 echo ""

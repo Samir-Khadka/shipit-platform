@@ -38,6 +38,14 @@ spec:
       # safety (prometheus, alertmanager, grafana, loki, tempo) DO get
       # requests+limits via k8s/observability/*-values.yaml. Chart versions
       # are pinned in k8s/apps/*.yaml.
+      #
+      # Phase 5 carve-out (chaos-mesh): the chaos-daemon DaemonSet and the
+      # controller's webhook/admission Jobs don't all take resources via
+      # values, and forking the chart to satisfy a workload policy would
+      # couple us to its internals. The main components (controller-manager,
+      # chaos-daemon) DO get modest requests+limits via the chaos-mesh app's
+      # valuesObject in k8s/apps/chaos-mesh.yaml. Chart version is pinned
+      # (2.8.7). The policy stays Enforce for every shipit workload.
       exclude:
         any:
           - resources:
@@ -46,6 +54,7 @@ spec:
                 - linkerd-viz
                 - flagger
                 - monitoring
+                - chaos-mesh
       validate:
         message: "CPU and memory requests and limits are required for every container."
         pattern:

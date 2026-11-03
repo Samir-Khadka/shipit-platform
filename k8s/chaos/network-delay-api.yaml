@@ -1,0 +1,42 @@
+# DEMO-ONLY experiment — applied by hand during a demo, NOT synced by ArgoCD.
+#
+#   kubectl apply -f k8s/chaos/network-delay-api.yaml
+#
+# Proves: observability reacts. 500ms of inbound latency (plus 100ms jitter)
+# is injected into one shipit-api pod for 2 minutes. Because the canary and
+# SLO gates both use p99 <= 500ms, you can watch the signal propagate:
+#   kubectl -n monitoring port-forward svc/kube-prometheus-stack-grafana 3000:80
+#   # 'ShipIt SLOs': p99 panel climbs past the 500ms line
+#   # 'ShipIt Golden Signals': latency panel spikes on the api
+#   kubectl -n monitoring get prometheusrule shipit-api-slo -o yaml | grep -A2 ShipItApiLatencyHigh
+#   # the 10m-for warning won't fire inside 2 minutes — that is the honest
+#     caveat to say on camera: the alert needs a longer soak than the demo
+#     injection. Extend duration to "15m" if you want the alert to actually
+#     fire live.
+# Traces: with OTEL_EXPORTER_OTLP_ENDPOINT set, Tempo shows the delayed spans.
+#
+# Blast radius: ONE api pod (mode: one), inbound traffic only (direction: to),
+# shipit namespace only. The other replica keeps serving normally, so the
+# service degrades — it does not go down.
+# Self-terminating: duration 2m, then delete the resource:
+#   kubectl delete -f k8s/chaos/network-delay-api.yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: demo-network-delay-api
+  labels:
+    app.kubernetes.io/part-of: shipit
+    shipit.io/demo-only: "true"
+spec:
+  action: delay
+  mode: one
+  duration: "2m"
+  selector:
+    namespaces:
+      - shipit
+    labelSelectors:
+      app.kubernetes.io/name: shipit-api
+  delay:
+    latency: "500ms"
+    jitter: "100ms"
+  direction: to

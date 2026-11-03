@@ -1,0 +1,25 @@
+# Phase 5 carve-out proof: simulates chaos-daemon, which MUST run
+# privileged as root — it injects faults through the kernel (tc/iptables,
+# process signals). There is no unprivileged way to do this. In the excluded
+# chaos-mesh namespace, both pod-security rules must let it through. Shipit
+# workloads that are privileged or root elsewhere are still rejected
+# (fail-privileged, fail-root).
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: chaos-daemon
+  namespace: chaos-mesh
+spec:
+  selector:
+    matchLabels:
+      app: chaos-daemon
+  template:
+    metadata:
+      labels:
+        app: chaos-daemon
+    spec:
+      containers:
+        - name: chaos-daemon
+          image: ghcr.io/chaos-mesh/chaos-daemon:v2.8.7
+          securityContext:
+            privileged: true

@@ -9,6 +9,7 @@ resources:
   - fail-deployment.yaml
   - excluded-namespace-deployment.yaml
   - monitoring-namespace-deployment.yaml
+  - chaos-mesh-namespace-daemonset.yaml
 results:
   - policy: require-requests-limits
     rule: require-requests-limits
@@ -35,4 +36,12 @@ results:
     resources:
       - monitoring-deploy
     kind: Deployment
+    result: pass
+  # Phase 5 carve-out: chaos-daemon sets no resources via chart defaults,
+  # in the excluded chaos-mesh namespace — let through on purpose.
+  - policy: require-requests-limits
+    rule: require-requests-limits
+    resources:
+      - chaos-daemon
+    kind: DaemonSet
     result: pass

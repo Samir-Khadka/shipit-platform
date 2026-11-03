@@ -1,0 +1,22 @@
+# Phase 5 carve-out proof: simulates chaos-daemon, which sets no
+# resources via the chart's default values — in the excluded chaos-mesh
+# namespace, so the policy must let it through. The carve-out is intentional,
+# not a hole: shipit workloads in any other namespace are still rejected
+# (fail-deploy).
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: chaos-daemon
+  namespace: chaos-mesh
+spec:
+  selector:
+    matchLabels:
+      app: chaos-daemon
+  template:
+    metadata:
+      labels:
+        app: chaos-daemon
+    spec:
+      containers:
+        - name: chaos-daemon
+          image: ghcr.io/chaos-mesh/chaos-daemon:v2.8.7

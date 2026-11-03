@@ -1,0 +1,65 @@
+# Chaos Mesh — resilience proofing. Pinned: chart 2.8.7 (app 2.8.7),
+# verified live in the Helm index (https://charts.chaos-mesh.org).
+#
+# What it is: Chaos Mesh installs the chaos *tooling* (controller-manager +
+# chaos-daemon DaemonSet). The experiments themselves live in k8s/chaos/ and
+# are applied BY HAND during a demo — never synced by ArgoCD. Rationale: a
+# GitOps-synced pod-kill would randomly kill demo pods during recordings or
+# everyday use; chaos must be deliberate, not ambient. Every experiment is
+# self-terminating (duration) and scoped to the shipit namespace only.
+#
+# Sync wave 3 (AFTER kyverno-policies at wave 2): chaos-daemon must run
+# privileged (it injects faults via the kernel — there is no other way), so
+# the chaos-mesh namespace is explicitly carved out of the require-pod-security
+# and require-requests-limits ClusterPolicies (documented there, CLI-tested).
+# Installing after the policies sync means the carve-outs exist before the
+# daemon's pods are created.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: chaos-mesh
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: shipit
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  project: default
+  source:
+    repoURL: https://charts.chaos-mesh.org
+    chart: chaos-mesh
+    targetRevision: 2.8.7
+    helm:
+      valuesObject:
+        # The dashboard needs a database secret for persistence and adds
+        # nothing to the demo — experiments are YAML applied with kubectl.
+        dashboard:
+          create: false
+        # Modest requests+limits so the free-tier node isn't starved; the
+        # namespace-wide Kyverno carve-outs (documented in the policies) keep
+        # us decoupled from the chart's other internal pods.
+        controllerManager:
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+        chaosDaemon:
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: chaos-mesh
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

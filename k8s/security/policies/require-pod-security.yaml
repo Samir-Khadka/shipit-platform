@@ -32,6 +32,13 @@ spec:
       # observability charts install already runs non-root (verified by
       # rendering the pinned charts), but the namespace-wide carve-out keeps
       # us decoupled from chart internals, same as Phase 3.
+      #
+      # Phase 5 carve-out (chaos-mesh): chaos-daemon MUST run privileged with
+      # hostPID — it injects faults through the kernel (tc/iptables for
+      # network chaos, process signals for pod-kill). There is no unprivileged
+      # way to do this; the tool is privileged by design, its version is
+      # pinned (chart 2.8.7), and every experiment is still scoped to the
+      # shipit namespace by the selector in k8s/chaos/*.yaml.
       exclude:
         any:
           - resources:
@@ -40,6 +47,7 @@ spec:
                 - linkerd-viz
                 - flagger
                 - monitoring
+                - chaos-mesh
       validate:
         message: "Privileged containers are not allowed."
         deny:
@@ -58,6 +66,8 @@ spec:
       # Phase 3 carve-out: see disallow-privileged above.
       # Phase 4 carve-out (monitoring): promtail runs as root by design
       # (host log access) — see disallow-privileged above.
+      # Phase 5 carve-out (chaos-mesh): chaos-daemon runs as root by design
+      # (kernel fault injection) — see disallow-privileged above.
       exclude:
         any:
           - resources:
@@ -66,6 +76,7 @@ spec:
                 - linkerd-viz
                 - flagger
                 - monitoring
+                - chaos-mesh
       validate:
         message: "Running as root is not allowed — set spec.securityContext.runAsNonRoot to true."
         pattern:

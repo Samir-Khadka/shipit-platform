@@ -47,7 +47,47 @@ canary demo flips between releases.
 | 2 | Supply-chain gates: Trivy blocking, cosign, Kyverno policies | ✅ done |
 | 3 | Flagger + Linkerd canaries with auto-rollback | ✅ done |
 | 4 | Observability: metrics, logs, traces, SLO dashboards, Alertmanager | ✅ done |
-| 5 | Chaos experiments, architecture diagram, runbook, demo video | planned |
+| 5 | Chaos experiments, architecture diagram, runbook, demo video | ✅ done |
+
+**Docs:** [architecture](docs/architecture.md) (full diagram + design
+decisions) · [runbook](docs/runbook.md) (operations, adding a service,
+common failures) · [demo video script](docs/demo-video-script.md)
+(5-minute shot list with exact commands).
+
+## Run the demo
+
+```bash
+# 1. Bootstrap the whole platform (k3s on Linux / k3d on Windows)
+sudo ./scripts/bootstrap.sh        # or: .\scripts\bootstrap.ps1
+
+# 2. The loop: bump APP_VERSION in k8s/base/api.yaml, push to main,
+#    watch CI (test → Trivy → cosign → tag-bump) and ArgoCD sync it.
+
+# 3. The canary: scripts/demo-canary.md — ship a good build, then a bad one
+#    (FAULT_RATE=0.3), watch Flagger halt it and roll back.
+
+# 4. The dashboards: port-forward Grafana (see Phase 4 section below),
+#    open 'ShipIt Golden Signals' and 'ShipIt SLOs'.
+
+# 5. The chaos proofs (applied by hand — never synced by ArgoCD):
+kubectl apply -f k8s/chaos/pod-kill-api.yaml        # self-healing: pod recreated
+kubectl apply -f k8s/chaos/network-delay-api.yaml   # observability: p99 climbs
+kubectl delete -f k8s/chaos/pod-kill-api.yaml k8s/chaos/network-delay-api.yaml
+```
+
+## Honest constraints
+
+- **Free tier, everywhere** — k3d on a laptop today, Oracle Ampere later.
+  GHCR hosts the images, all tooling is open source. No cloud bill.
+- **24h retention** on Prometheus/Loki/Tempo (free-tier disk). SLI windows
+  are 24h, not 30d; the burn-rate alert math is window-agnostic.
+- **The live cluster runs on your machine.** This repo's sandbox can't run
+  k3s (no cpu cgroup v2): everything is statically validated (kubeconform,
+  promtool, Kyverno CLI, rendered-chart checks) and the cluster half runs
+  via `scripts/`. No live canary/chaos run is claimed.
+- **Alertmanager's receiver is a placeholder** — wire a real one; no fake
+  integrations.
+- **loki-stack is deprecated upstream** (migration path noted in its values).
 
 ## Free-tier notes
 
@@ -305,6 +345,50 @@ suite green (14/14, incl. 5 new observability tests), Kyverno CLI green
 (16/16, incl. 2 new carve-out cases). Live install runs on your machine —
 same k3s constraint as ever.*
 
+## Phase 5: chaos — prove it heals
+
+A platform that can't prove it heals is a slide deck. Chaos Mesh 2.8.7
+installs as a GitOps-managed ArgoCD Application (`k8s/apps/chaos-mesh.yaml`,
+sync wave 3 — after the Kyverno policies that carve out its namespace), but
+the **experiments are applied by hand**, never synced: a GitOps-synced
+pod-kill would fire during recordings and everyday use. Chaos is deliberate,
+not ambient.
+
+```
+k8s/chaos/pod-kill-api.yaml       PodChaos: kill one api pod, watch the
+                                  Deployment recreate it (self-healing)
+k8s/chaos/network-delay-api.yaml  NetworkChaos: 500ms inbound delay on one
+                                  api pod for 2m — p99 climbs past the 500ms
+                                  SLO line, traces show it (observability reacts)
+```
+
+Every experiment is self-terminating (`duration`), scoped to the `shipit`
+namespace, and labeled `shipit.io/demo-only: "true"`. The demo video script
+(`docs/demo-video-script.md`) walks the full 5-minute arc: the loop →
+canary auto-rollback → dashboards → chaos proofs.
+
+**Design notes worth knowing:**
+
+- **chaos-daemon must run privileged** (kernel fault injection via
+  tc/iptables and process signals — there is no unprivileged way). The
+  `chaos-mesh` namespace is explicitly carved out of `require-pod-security`
+  and `require-requests-limits`, documented in the policies, CLI-tested —
+  the same pattern as the linkerd/flagger/monitoring carve-outs. Chart
+  version pinned (2.8.7); experiments are still namespace-scoped by their
+  selectors.
+- **Dashboard disabled** (`dashboard.create: false`) — it needs a database
+  secret and adds nothing to the demo; experiments are YAML + kubectl.
+- **The network-delay caveat, said on camera:** the `ShipItApiLatencyHigh`
+  alert needs a 10-minute soak, longer than the demo's 2-minute injection.
+  Extend `duration` to `15m` if you want the alert to actually fire live —
+  the script says this out loud rather than faking it.
+
+*Verified: chart 2.8.7 checked live (Helm index + chart tgz HTTP 200),
+PodChaos/NetworkChaos YAMLs field-checked against the real CRD schemas
+extracted from the pinned chart, yamllint + kubeconform clean, Kyverno CLI
+tests green incl. the new chaos-mesh carve-out cases. The live chaos run
+itself happens on your machine — same k3s constraint as ever.*
+
 ## Layout
 
 ```
@@ -316,8 +400,14 @@ k8s/base/        Namespace + Deployments/Services for api, worker, web
 k8s/apps/        ArgoCD Applications (one per service) — the app-of-apps leaves
 k8s/argocd/      root Application (shipit-root) pointing at k8s/apps
 k8s/canary/      Flagger Canary + MetricTemplates for shipit-api (Phase 3)
+k8s/chaos/       Chaos Mesh experiments, demo-only, applied by hand (Phase 5)
+k8s/observability/ kube-prometheus-stack / Loki / Tempo values, ServiceMonitors,
+                 PrometheusRules, Grafana dashboards as code (Phase 4)
 k8s/security/    ClusterPolicies (Kyverno) + offline CLI tests proving them
+docs/            architecture.md (diagram + design decisions), runbook.md
+                 (operations), demo-video-script.md (5-minute shot list)
 scripts/         bootstrap.sh (Linux/k3s) and bootstrap.ps1 (Windows/k3d),
-                 demo-canary.md (the canary walkthrough)
+                 demo-canary.md (the canary walkthrough), build-dashboards.sh
+                 (validate + regenerate Grafana ConfigMaps)
 .github/         CI: test → build → Trivy scan → push → cosign sign → bump image tags
 ```

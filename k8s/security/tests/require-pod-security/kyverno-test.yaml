@@ -9,6 +9,7 @@ resources:
   - fail-privileged.yaml
   - fail-root.yaml
   - monitoring-promtail.yaml
+  - chaos-mesh-daemon.yaml
 results:
   - policy: require-pod-security
     rule: disallow-privileged
@@ -47,4 +48,19 @@ results:
     resources:
       - monitoring-promtail
     kind: Deployment
+    result: pass
+  # Phase 5 carve-out: chaos-daemon is privileged + root BY DESIGN (kernel
+  # fault injection) in the excluded chaos-mesh namespace — both rules let
+  # it through. Privileged shipit workloads elsewhere are still rejected.
+  - policy: require-pod-security
+    rule: disallow-privileged
+    resources:
+      - chaos-daemon
+    kind: DaemonSet
+    result: pass
+  - policy: require-pod-security
+    rule: require-run-as-non-root
+    resources:
+      - chaos-daemon
+    kind: DaemonSet
     result: pass

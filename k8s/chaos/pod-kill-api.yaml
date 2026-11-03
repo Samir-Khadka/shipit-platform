@@ -1,0 +1,34 @@
+# DEMO-ONLY experiment — applied by hand during a demo, NOT synced by ArgoCD.
+#
+#   kubectl apply -f k8s/chaos/pod-kill-api.yaml
+#
+# Proves: self-healing. One shipit-api pod is killed; the Deployment's
+# ReplicaSet recreates it within seconds, and ArgoCD's selfHeal stays green
+# the whole time (nothing in Git changed, so there is nothing to fight).
+# Watch it:
+#   kubectl -n shipit get pods -w
+#   # one api pod goes Terminating, a fresh one appears, READY 2/2 again
+#   kubectl -n monitoring port-forward svc/kube-prometheus-stack-grafana 3000:80
+#   # 'ShipIt Golden Signals': a brief dip in the api's pod count, no error spike
+#
+# Blast radius: ONE pod of shipit-api (mode: one), shipit namespace only.
+# The api runs 2 replicas, so the service stays up throughout — killing the
+# only pod of a 1-replica service would be an outage, not a demo.
+# Self-terminating: duration 60s, then delete the file's resource:
+#   kubectl delete -f k8s/chaos/pod-kill-api.yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: demo-pod-kill-api
+  labels:
+    app.kubernetes.io/part-of: shipit
+    shipit.io/demo-only: "true"
+spec:
+  action: pod-kill
+  mode: one
+  duration: "60s"
+  selector:
+    namespaces:
+      - shipit
+    labelSelectors:
+      app.kubernetes.io/name: shipit-api

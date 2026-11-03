@@ -130,6 +130,16 @@ Write-Host "==> SLO alert rules:"
 kubectl -n monitoring get prometheusrule shipit-api-slo -o custom-columns=NAME:.metadata.name 2>$null
 if ($LASTEXITCODE -ne 0) { Write-Host "    (shipit-api-slo not visible yet — observability-config may still be syncing)" }
 
+# --- Chaos Mesh (Phase 5) ----------------------------------------------------
+# The tooling installs via ArgoCD (sync wave 3, after the Kyverno policies
+# that carve out its namespace). Experiments are NOT synced — they live in
+# k8s/chaos/ and are applied by hand during a demo.
+Write-Host "==> Waiting for Chaos Mesh (installed by ArgoCD)..."
+kubectl -n argocd wait --for=jsonpath='{.status.health.status}'=Healthy `
+  --timeout=600s "application/chaos-mesh"
+if ($LASTEXITCODE -ne 0) { Write-Warning "chaos-mesh not Healthy yet — check the ArgoCD UI" }
+kubectl -n chaos-mesh get pods 2>$null | Select-Object -First 5
+
 Write-Host ""
 Write-Host "Done. Useful next steps:"
 Write-Host "  ArgoCD UI:      kubectl -n argocd port-forward svc/argocd-server 8080:443   # https://localhost:8080"
@@ -138,6 +148,10 @@ Write-Host "  Watch pods:     kubectl -n shipit get pods -w"
 Write-Host "  API version:    kubectl -n shipit port-forward svc/shipit-api 8000:8000  # then: curl localhost:8000/version"
 Write-Host "  Canary demo:    see scripts/demo-canary.md — push a good build, then a bad one"
 Write-Host "                  (FAULT_RATE=0.3), and watch Flagger roll it back"
+Write-Host "  Chaos demo:     Chaos Mesh is installed (k8s/apps/chaos-mesh.yaml); experiments"
+Write-Host "                  are applied by hand, never synced:"
+Write-Host "                    kubectl apply -f k8s/chaos/pod-kill-api.yaml"
+Write-Host "                    kubectl apply -f k8s/chaos/network-delay-api.yaml"
 Write-Host "  linkerd-viz:    kubectl -n linkerd-viz port-forward svc/web 8084:8084  # https://localhost:8084"
 Write-Host ""
 Write-Host "  Phase 4 - Grafana:"
