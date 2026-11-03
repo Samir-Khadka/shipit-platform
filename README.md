@@ -104,6 +104,11 @@ kubectl -n argocd get applications
 Try the loop: edit `APP_VERSION` in `k8s/base/api.yaml`, push to main, and
 watch ArgoCD pick it up — no manual `kubectl` involved.
 
+*Verified: the CI → GHCR → tag-bump loop runs live on GitHub Actions;
+manifests pass kubeconform (Kubernetes 1.33) and yamllint; the cluster
+bootstrap itself runs on your machine via `scripts/` (it needs a real
+host with cgroups — a container sandbox can't run k3s).*
+
 ## Layout
 
 ```
