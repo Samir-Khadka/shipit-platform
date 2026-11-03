@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ShipIt — demo frontend</title>
+  <style>
+    body { font-family: system-ui, sans-serif; background: #faf6ed; color: #1f2937;
+           max-width: 640px; margin: 2rem auto; padding: 0 1rem; }
+    .card { background: #fff; border: 1px solid #e5dcc8; border-radius: 12px;
+            padding: 1.25rem; margin-bottom: 1rem; }
+    .version { font-size: 1.5rem; font-weight: 700; color: #6d28d9; }
+    button { background: #6d28d9; color: #fff; border: 0; border-radius: 8px;
+             padding: 0.5rem 1rem; cursor: pointer; }
+    input { padding: 0.5rem; border: 1px solid #d6cdb4; border-radius: 8px; width: 60%; }
+    pre { background: #f3efe2; padding: 0.75rem; border-radius: 8px; overflow-x: auto; }
+  </style>
+</head>
+<body>
+  <h1>ShipIt demo frontend</h1>
+
+  <div class="card">
+    <div>API version serving this page:</div>
+    <div class="version" id="version">loading…</div>
+    <small>(This is what the Phase 3 canary demo flips between v1 and v2.)</small>
+  </div>
+
+  <div class="card">
+    <h3>Echo</h3>
+    <input id="echoInput" placeholder="type a message" />
+    <button id="echoBtn">Send</button>
+    <pre id="echoOut">—</pre>
+  </div>
+
+  <div class="card">
+    <h3>Counter</h3>
+    <button id="incrBtn">Increment</button>
+    <pre id="countOut">—</pre>
+  </div>
+
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
