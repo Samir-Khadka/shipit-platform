@@ -6,12 +6,13 @@ RUN node --check worker.js
 
 # ---- runtime: non-root 'node' user ships with the image ----
 FROM node:20-slim AS runtime
+# Patch OS packages for the Trivy gate (Debian security updates), then drop
+# npm itself — the worker has zero npm deps (global fetch only), so none of
+# that code needs to ship. Smaller image, smaller attack surface.
+RUN apt-get update && apt-get upgrade -y && rm -rf /var/lib/apt/lists/* \
+    && rm -rf /usr/local/lib/node_modules /usr/local/bin/npm /usr/local/bin/npx
 WORKDIR /app
 COPY --from=check /app/package.json /app/worker.js ./
-# The worker has zero npm dependencies (global fetch only): drop npm itself
-# to shrink the attack surface — its bundled libs carried HIGH CVEs that
-# Trivy flags, and none of that code ever executes here.
-RUN rm -rf /usr/local/lib/node_modules /usr/local/bin/npm /usr/local/bin/npx
 USER node
 ENV API_URL=http://localhost:8000
 CMD ["node", "worker.js"]
