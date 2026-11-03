@@ -155,13 +155,15 @@ against test fixtures, including a real unsigned GHCR image):
 kyverno test k8s/security/tests/disallow-latest    # :latest REJECTED, :sha ALLOWED
 kyverno test k8s/security/tests/require-limits     # missing resources REJECTED
 kyverno test k8s/security/tests/require-pod-security
-kyverno test k8s/security/tests/require-signatures # unsigned image REJECTED (needs network)
+kyverno test k8s/security/tests/require-signatures # unsigned REJECTED, signed ALLOWED (needs network)
 ```
 
 The negative path is exercised by these CLI tests; CI proves the positive path
-every run (Trivy green + cosign signature created). The one thing deliberately
-*not* done: planting a fake vulnerability to force a red build — the gate's
-config is what's under test, and a passing scan is the honest claim.
+every run (Trivy green + cosign signature created, and the CLI test suite
+includes a signed-image ALLOWED case against a real CI-signed GHCR image).
+The one thing deliberately *not* done: planting a fake vulnerability to force
+a red build — the gate's config is what's under test, and a passing scan is
+the honest claim.
 
 ## Layout
 

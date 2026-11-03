@@ -1,0 +1,20 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pass-deploy
+  namespace: shipit
+spec:
+  selector:
+    matchLabels:
+      app: pass
+  template:
+    metadata:
+      labels:
+        app: pass
+    spec:
+      containers:
+        - name: api
+          # Signed by Phase 2 CI (cosign v2.4.3, keyless OIDC) — the .sig tag
+          # exists, so verification must pass.
+          image: >-
+            ghcr.io/samir-khadka/shipit-api:8fcdadb137b4c3a43e7cd7f3bbabf2cca3379449

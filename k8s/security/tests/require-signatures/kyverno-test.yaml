@@ -6,6 +6,7 @@ policies:
   - ../../policies/require-image-signatures.yaml
 resources:
   - fail-deployment.yaml
+  - pass-deployment.yaml
 results:
   # This image REALLY exists in GHCR (built by Phase 0 CI) but was never
   # signed — signing starts with Phase 2. Verification must fail.
@@ -15,3 +16,11 @@ results:
       - fail-deploy
     kind: Deployment
     result: fail
+  # This image was built AND signed by Phase 2 CI (cosign v2.4.3 keyless).
+  # Verification must pass. (Needs network: GHCR + Rekor.)
+  - policy: require-image-signatures
+    rule: verify-signature
+    resources:
+      - pass-deploy
+    kind: Deployment
+    result: pass
