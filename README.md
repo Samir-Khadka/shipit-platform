@@ -137,6 +137,13 @@ the `[ci]` tag-bump commit (which only rewrites k8s YAML) stays valid.
 from the GitHub OIDC issuer + the public Sigstore roots, and the Kyverno
 policy pins the exact workflow identity allowed to sign.
 
+> **cosign ↔ Kyverno compatibility:** cosign v3 defaults to storing signatures
+> via the OCI 1.1 referrers API, but Kyverno v1.19.2 only looks up the legacy
+> `.sig` tag scheme. CI therefore signs with `--registry-referrers-mode=legacy`
+> so signer and verifier agree. (Caught during Phase 2 verification:
+> referrer-stored signatures were invisible to Kyverno's `verifyImages` —
+> failing closed — while legacy-tag signatures verify correctly.)
+
 **Kyverno is GitOps-managed too:** `k8s/apps/kyverno.yaml` installs Kyverno
 v1.19.2 (Helm chart 3.9.2, pinned) via ArgoCD, and `k8s/apps/kyverno-policies.yaml`
 syncs `k8s/security/policies/` right after (sync-wave 2, once the CRDs exist).
