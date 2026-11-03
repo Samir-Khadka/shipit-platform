@@ -1,0 +1,23 @@
+# ShipIt supply-chain policies, GitOps-managed. Sync-wave 2: applies only
+# after the Kyverno CRDs from the kyverno app are installed.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kyverno-policies
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: shipit
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/Samir-Khadka/shipit-platform.git
+    targetRevision: main
+    path: k8s/security/policies
+  destination:
+    server: https://kubernetes.default.svc
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

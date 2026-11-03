@@ -65,6 +65,16 @@ foreach ($app in @("shipit-api", "shipit-worker", "shipit-web")) {
   if ($LASTEXITCODE -ne 0) { Write-Warning "$app not Healthy yet — check the ArgoCD UI" }
 }
 
+Write-Host "==> Waiting for Kyverno + supply-chain policies (installed by ArgoCD)..."
+foreach ($app in @("kyverno", "kyverno-policies")) {
+  kubectl -n argocd wait --for=jsonpath='{.status.health.status}'=Healthy `
+    --timeout=600s "application/$app"
+  if ($LASTEXITCODE -ne 0) { Write-Warning "$app not Healthy yet — check the ArgoCD UI" }
+}
+Write-Host "==> ClusterPolicies now enforced:"
+kubectl get clusterpolicies -o custom-columns=NAME:.metadata.name,ACTION:.spec.validationFailureAction 2>$null
+if ($LASTEXITCODE -ne 0) { Write-Warning "ClusterPolicies not visible yet — Kyverno may still be installing" }
+
 Write-Host ""
 Write-Host "Done. Useful next steps:"
 Write-Host "  ArgoCD UI:      kubectl -n argocd port-forward svc/argocd-server 8080:443   # https://localhost:8080"

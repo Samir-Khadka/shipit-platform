@@ -44,7 +44,7 @@ canary demo flips between releases.
 |-------|------|--------|
 | 0 | Scaffold: demo microservice, Dockerfiles, CI → GHCR | ✅ done |
 | 1 | k3s cluster + ArgoCD app-of-apps GitOps | ✅ done |
-| 2 | Supply-chain gates: Trivy blocking, cosign, Kyverno policies | planned |
+| 2 | Supply-chain gates: Trivy blocking, cosign, Kyverno policies | ✅ done |
 | 3 | Flagger + Linkerd canaries with auto-rollback | planned |
 | 4 | Observability: Loki, Tempo, SLO dashboards, Alertmanager | planned |
 | 5 | Chaos experiments, architecture diagram, runbook, demo video | planned |
@@ -109,6 +109,53 @@ manifests pass kubeconform (Kubernetes 1.33) and yamllint; the cluster
 bootstrap itself runs on your machine via `scripts/` (it needs a real
 host with cgroups — a container sandbox can't run k3s).*
 
+## Phase 2: supply-chain gates — the trust chain
+
+No unsigned, vulnerable, or `:latest` image can reach the cluster:
+
+```
+CI:  build → Trivy scan (fail on HIGH/CRITICAL, fixable) → push → cosign sign (keyless OIDC)
+Cluster: Kyverno admission policies (Enforce)
+  1. require-image-signatures — every ghcr.io/samir-khadka/shipit-* image must
+     carry a keyless Sigstore signature minted by main-branch CI
+  2. disallow-latest-tag     — ':latest' is rejected; only immutable :<sha> tags
+  3. require-requests-limits  — every container sets cpu/memory requests + limits
+  4. require-pod-security     — no privileged containers, runAsNonRoot enforced
+```
+
+**Severity choice (Trivy):** the gate fails on HIGH and CRITICAL
+vulnerabilities *with a fix available* (`ignore-unfixed: true`). This keeps the
+gate actionable — it blocks on what we can actually fix, instead of failing
+every build on unfixable base-image/kernel noise. The full table still prints
+in the CI log for review.
+
+**Keyless signing:** no private keys exist anywhere. CI mints an OIDC identity
+(`.../ci.yml@refs/heads/main`), Fulcio issues a short-lived certificate,
+Rekor logs the signature publicly. Signatures bind to the image *digest*, so
+the `[ci]` tag-bump commit (which only rewrites k8s YAML) stays valid.
+**Key rotation: nothing to rotate** — there are no long-lived keys; trust comes
+from the GitHub OIDC issuer + the public Sigstore roots, and the Kyverno
+policy pins the exact workflow identity allowed to sign.
+
+**Kyverno is GitOps-managed too:** `k8s/apps/kyverno.yaml` installs Kyverno
+v1.19.2 (Helm chart 3.9.2, pinned) via ArgoCD, and `k8s/apps/kyverno-policies.yaml`
+syncs `k8s/security/policies/` right after (sync-wave 2, once the CRDs exist).
+
+**Prove it offline** (no cluster needed — the Kyverno CLI runs the policies
+against test fixtures, including a real unsigned GHCR image):
+
+```bash
+kyverno test k8s/security/tests/disallow-latest    # :latest REJECTED, :sha ALLOWED
+kyverno test k8s/security/tests/require-limits     # missing resources REJECTED
+kyverno test k8s/security/tests/require-pod-security
+kyverno test k8s/security/tests/require-signatures # unsigned image REJECTED (needs network)
+```
+
+The negative path is exercised by these CLI tests; CI proves the positive path
+every run (Trivy green + cosign signature created). The one thing deliberately
+*not* done: planting a fake vulnerability to force a red build — the gate's
+config is what's under test, and a passing scan is the honest claim.
+
 ## Layout
 
 ```
@@ -119,6 +166,7 @@ docker/          container conventions
 k8s/base/        Namespace + Deployments/Services for api, worker, web
 k8s/apps/        ArgoCD Applications (one per service) — the app-of-apps leaves
 k8s/argocd/      root Application (shipit-root) pointing at k8s/apps
+k8s/security/    ClusterPolicies (Kyverno) + offline CLI tests proving them
 scripts/         bootstrap.sh (Linux/k3s) and bootstrap.ps1 (Windows/k3d)
-.github/         CI: test → build → push images to GHCR → bump image tags in Git
+.github/         CI: test → build → Trivy scan → push → cosign sign → bump image tags
 ```

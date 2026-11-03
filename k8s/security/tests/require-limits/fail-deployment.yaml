@@ -1,0 +1,17 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fail-deploy
+  namespace: shipit
+spec:
+  selector:
+    matchLabels:
+      app: fail
+  template:
+    metadata:
+      labels:
+        app: fail
+    spec:
+      containers:
+        - name: api
+          image: ghcr.io/samir-khadka/shipit-api:065f2a4b5b6595026368c89348b2635ff72cc717

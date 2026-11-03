@@ -1,0 +1,28 @@
+# Mutable tags are a deployment footgun: with imagePullPolicy: Always, whatever
+# ':latest' happens to point at would roll out silently. CI pins every deploy
+# to an immutable :<sha> tag; this policy makes ':latest' a hard error.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: disallow-latest-tag
+  annotations:
+    policies.kyverno.io/title: Disallow Latest Tag
+    policies.kyverno.io/category: Best Practices
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/subject: Pod
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: require-image-tag
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      validate:
+        message: "Using the ':latest' image tag is not allowed — use an immutable tag (e.g. :<sha>)."
+        pattern:
+          spec:
+            containers:
+              - image: "!*:latest"

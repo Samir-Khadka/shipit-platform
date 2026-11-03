@@ -1,0 +1,35 @@
+# Requires every shipit image to carry a keyless Sigstore signature minted by
+# this repo's CI on main (GitHub OIDC). Unsigned images are rejected at
+# admission; the signature is verified against the public Sigstore
+# infrastructure (Fulcio certificate chain + Rekor transparency log).
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-image-signatures
+  annotations:
+    policies.kyverno.io/title: Require Signed Images
+    policies.kyverno.io/category: Supply Chain
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/subject: Pod
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: verify-signature
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      verifyImages:
+        - imageReferences:
+            - "ghcr.io/samir-khadka/shipit-*"
+          attestors:
+            - entries:
+                - keyless:
+                    # Exact CI identity: workflow file + branch. Only images
+                    # built by main-branch CI can ever be admitted.
+                    subject: "https://github.com/Samir-Khadka/shipit-platform/.github/workflows/ci.yml@refs/heads/main"
+                    issuer: "https://token.actions.githubusercontent.com"
+                    rekor:
+                      url: https://rekor.sigstore.dev

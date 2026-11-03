@@ -17,10 +17,12 @@ spec:
         app.kubernetes.io/name: shipit-web
         app.kubernetes.io/part-of: shipit
     spec:
+      securityContext:
+        runAsNonRoot: true
       containers:
         - name: web
           # NOTE: tag is rewritten to :<sha> by CI on every main push.
-          image: ghcr.io/samir-khadka/shipit-web:d1603cb256c96a11819cfb8265f4bedd0965cd27
+          image: ghcr.io/samir-khadka/shipit-web:latest
           imagePullPolicy: Always
           ports:
             - name: http

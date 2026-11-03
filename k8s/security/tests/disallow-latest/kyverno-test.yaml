@@ -1,0 +1,22 @@
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: disallow-latest-tag
+policies:
+  - ../../policies/disallow-latest-tag.yaml
+resources:
+  - pass-deployment.yaml
+  - fail-deployment.yaml
+results:
+  - policy: disallow-latest-tag
+    rule: require-image-tag
+    resources:
+      - pass-deploy
+    kind: Deployment
+    result: pass
+  - policy: disallow-latest-tag
+    rule: require-image-tag
+    resources:
+      - fail-deploy
+    kind: Deployment
+    result: fail

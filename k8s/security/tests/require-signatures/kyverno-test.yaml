@@ -1,0 +1,17 @@
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: require-image-signatures
+policies:
+  - ../../policies/require-image-signatures.yaml
+resources:
+  - fail-deployment.yaml
+results:
+  # This image REALLY exists in GHCR (built by Phase 0 CI) but was never
+  # signed — signing starts with Phase 2. Verification must fail.
+  - policy: require-image-signatures
+    rule: verify-signature
+    resources:
+      - fail-deploy
+    kind: Deployment
+    result: fail

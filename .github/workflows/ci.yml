@@ -29,6 +29,7 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write # keyless cosign signing via GitHub OIDC
     strategy:
       matrix:
         service: [api, worker, web]
@@ -40,18 +41,44 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Build and push shipit-${{ matrix.service }}
+      - name: Build shipit-${{ matrix.service }} (scan before push)
         uses: docker/build-push-action@v6
         with:
           context: apps/${{ matrix.service }}
-          push: true
+          load: true
+          push: false
           tags: ghcr.io/samir-khadka/shipit-${{ matrix.service }}:${{ github.sha }}
+      - name: Scan image with Trivy
+        # Gate: fail on HIGH/CRITICAL vulnerabilities that have a fix
+        # available. ignore-unfixed keeps the gate actionable — it blocks
+        # on what we can fix, not on unfixable base-image noise.
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ghcr.io/samir-khadka/shipit-${{ matrix.service }}:${{ github.sha }}
+          format: table
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
+      - name: Push image to GHCR
+        run: docker push ghcr.io/samir-khadka/shipit-${{ matrix.service }}:${{ github.sha }}
       - name: Tag :latest on main
         if: github.ref == 'refs/heads/main'
         run: |
           docker buildx imagetools create \
             -t ghcr.io/samir-khadka/shipit-${{ matrix.service }}:latest \
             ghcr.io/samir-khadka/shipit-${{ matrix.service }}:${{ github.sha }}
+      - name: Install cosign
+        if: github.ref == 'refs/heads/main'
+        uses: sigstore/cosign-installer@v4.1.2
+        with:
+          cosign-release: v3.1.4
+      - name: Sign image (keyless, GitHub OIDC)
+        # Keyless: no private keys anywhere — the signature is bound to the
+        # image digest and the CI workflow identity, verified against the
+        # public Sigstore infrastructure (Fulcio + Rekor). Digest-bound, so
+        # the later [ci] tag-bump commit (k8s YAML only) stays valid.
+        if: github.ref == 'refs/heads/main'
+        run: cosign sign --yes ghcr.io/samir-khadka/shipit-${{ matrix.service }}:${{ github.sha }}
 
   bump-tags:
     # Closes the GitOps loop: after images land in GHCR, write the new

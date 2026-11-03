@@ -17,10 +17,12 @@ spec:
         app.kubernetes.io/name: shipit-worker
         app.kubernetes.io/part-of: shipit
     spec:
+      securityContext:
+        runAsNonRoot: true
       containers:
         - name: worker
           # NOTE: tag is rewritten to :<sha> by CI on every main push.
-          image: ghcr.io/samir-khadka/shipit-worker:d1603cb256c96a11819cfb8265f4bedd0965cd27
+          image: ghcr.io/samir-khadka/shipit-worker:latest
           imagePullPolicy: Always
           env:
             - name: API_URL

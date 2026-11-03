@@ -1,0 +1,35 @@
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: require-pod-security
+policies:
+  - ../../policies/require-pod-security.yaml
+resources:
+  - pass-deployment.yaml
+  - fail-privileged.yaml
+  - fail-root.yaml
+results:
+  - policy: require-pod-security
+    rule: disallow-privileged
+    resources:
+      - pass-deploy
+    kind: Deployment
+    result: pass
+  - policy: require-pod-security
+    rule: require-run-as-non-root
+    resources:
+      - pass-deploy
+    kind: Deployment
+    result: pass
+  - policy: require-pod-security
+    rule: disallow-privileged
+    resources:
+      - fail-privileged
+    kind: Deployment
+    result: fail
+  - policy: require-pod-security
+    rule: require-run-as-non-root
+    resources:
+      - fail-root
+    kind: Deployment
+    result: fail

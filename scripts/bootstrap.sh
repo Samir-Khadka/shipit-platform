@@ -50,6 +50,16 @@ for app in shipit-api shipit-worker shipit-web; do
     || echo "WARN: ${app} not Healthy yet — check the ArgoCD UI"
 done
 
+echo "==> Waiting for Kyverno + supply-chain policies (installed by ArgoCD)..."
+for app in kyverno kyverno-policies; do
+  $KUBECTL -n argocd wait --for=jsonpath='{.status.health.status}'=Healthy \
+    --timeout=600s "application/${app}" \
+    || echo "WARN: ${app} not Healthy yet — check the ArgoCD UI"
+done
+echo "==> ClusterPolicies now enforced:"
+$KUBECTL get clusterpolicies -o custom-columns=NAME:.metadata.name,ACTION:.spec.validationFailureAction 2>/dev/null \
+  || echo "WARN: ClusterPolicies not visible yet — Kyverno may still be installing"
+
 echo ""
 echo "Done. Useful next steps:"
 echo "  ArgoCD UI:      k3s kubectl -n argocd port-forward svc/argocd-server 8080:443"
