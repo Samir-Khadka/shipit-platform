@@ -8,6 +8,7 @@ resources:
   - pass-deployment.yaml
   - fail-privileged.yaml
   - fail-root.yaml
+  - monitoring-promtail.yaml
 results:
   - policy: require-pod-security
     rule: disallow-privileged
@@ -33,3 +34,17 @@ results:
       - fail-root
     kind: Deployment
     result: fail
+  # Phase 4 carve-out: promtail must run as root (host log access) in the
+  # excluded monitoring namespace — both rules let it through.
+  - policy: require-pod-security
+    rule: disallow-privileged
+    resources:
+      - monitoring-promtail
+    kind: Deployment
+    result: pass
+  - policy: require-pod-security
+    rule: require-run-as-non-root
+    resources:
+      - monitoring-promtail
+    kind: Deployment
+    result: pass

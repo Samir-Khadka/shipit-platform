@@ -1,0 +1,21 @@
+# tempo values — ShipIt Phase 4 (observability).
+# Pinned chart: 1.24.4 (grafana). Verified in the Helm index 2026-11-03.
+#
+# Monolithic defaults, verified against the chart:
+# - OTLP receivers already on: gRPC :4317, HTTP :4318
+#   → the api ships spans to http://tempo.monitoring.svc.cluster.local:4318
+#     (OTEL_EXPORTER_OTLP_ENDPOINT in k8s/base/api.yaml)
+# - Query API on :3200 (server.http_listen_port)
+#   → Grafana Tempo datasource: http://tempo.monitoring.svc.cluster.local:3200
+# - Block retention already 24h (chart default) — restated here for intent.
+# - Storage: local filesystem (chart default).
+tempo:
+  retention: 24h
+  # Supported by the chart (statefulset). Modest free-tier sizing.
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi

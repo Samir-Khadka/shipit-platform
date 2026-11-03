@@ -1,0 +1,22 @@
+# Phase 4 carve-out proof: simulates an upstream observability component
+# (e.g. promtail's DaemonSet, whose chart doesn't template resources) — no
+# requests/limits set, but it lives in the excluded monitoring namespace, so
+# the policy must let it through. The carve-out is intentional, not a hole:
+# shipit workloads in any other namespace are still rejected (fail-deploy).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: monitoring-deploy
+  namespace: monitoring
+spec:
+  selector:
+    matchLabels:
+      app: monitoring
+  template:
+    metadata:
+      labels:
+        app: monitoring
+    spec:
+      containers:
+        - name: promtail
+          image: docker.io/grafana/promtail:3.5.1

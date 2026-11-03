@@ -28,6 +28,16 @@ spec:
       # else — including every shipit workload and every injected
       # linkerd-proxy sidecar (whose resources ARE set via the
       # linkerd-control-plane app's proxy.resources values).
+      #
+      # Phase 4 carve-out (monitoring): same deal for the observability
+      # charts (kube-prometheus-stack, loki-stack, tempo). Most chart-internal
+      # components — admission-hook Jobs, the grafana test Pod, promtail's
+      # DaemonSet (its chart doesn't template resources at all),
+      # node-exporter, kube-state-metrics, the operator, grafana's sidecars —
+      # don't take resources via values. The components that matter for node
+      # safety (prometheus, alertmanager, grafana, loki, tempo) DO get
+      # requests+limits via k8s/observability/*-values.yaml. Chart versions
+      # are pinned in k8s/apps/*.yaml.
       exclude:
         any:
           - resources:
@@ -35,6 +45,7 @@ spec:
                 - linkerd
                 - linkerd-viz
                 - flagger
+                - monitoring
       validate:
         message: "CPU and memory requests and limits are required for every container."
         pattern:

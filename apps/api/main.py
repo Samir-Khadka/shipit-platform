@@ -7,6 +7,7 @@ Endpoints:
   GET  /count        current counter value (in-memory)
   POST /count/incr   increments the counter
   POST /count/reset  resets the counter (used by tests)
+  GET  /metrics      Prometheus exposition (Phase 4; always on, not fault-injected)
 """
 from __future__ import annotations
 
@@ -15,10 +16,47 @@ import random
 
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
+from prometheus_fastapi_instrumentator import Instrumentator
 from pydantic import BaseModel
 
 SERVICE = "shipit-api"
 app = FastAPI(title=SERVICE)
+
+# Phase 4: Prometheus metrics. Always on — scraping is passive, and the
+# ServiceMonitor (k8s/observability/config/servicemonitor-api.yaml) expects
+# this endpoint. Kept out of the FAULT_RATE injector on purpose: metrics are
+# infrastructure, and the demo fault must not corrupt the signal it measures.
+Instrumentator().instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
+
+
+def _maybe_init_tracing() -> None:
+    """OpenTelemetry tracing — Phase 4 demo tooling (like FAULT_RATE).
+
+    Enabled ONLY when OTEL_EXPORTER_OTLP_ENDPOINT is set, e.g. in-cluster:
+    http://tempo.monitoring.svc.cluster.local:4318 (set in k8s/base/api.yaml).
+    Empty/unset = no-op. A missing/broken exporter never breaks the app —
+    spans just don't leave the process.
+    """
+    endpoint = os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT", "").strip()
+    if not endpoint:
+        return
+    try:
+        from opentelemetry import trace
+        from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
+            OTLPSpanExporter,
+        )
+        from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+        from opentelemetry.sdk.trace import TracerProvider
+        from opentelemetry.sdk.trace.export import BatchSpanProcessor
+    except ImportError:
+        return
+    provider = TracerProvider()
+    provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(endpoint=endpoint)))
+    trace.set_tracer_provider(provider)
+    FastAPIInstrumentor.instrument_app(app)
+
+
+_maybe_init_tracing()
 
 _counter = {"value": 0}
 

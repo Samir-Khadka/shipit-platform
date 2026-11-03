@@ -25,6 +25,13 @@ spec:
       # upstream Linkerd/Flagger charts manage their own pod security
       # contexts; we pin their versions in k8s/apps/*.yaml instead of
       # rewriting their specs. Still Enforce for all shipit workloads.
+      #
+      # Phase 4 carve-out (monitoring): promtail's DaemonSet must read
+      # /var/log on the host, so it runs as root by design — there is no
+      # non-root way to tail host container logs. Everything else the
+      # observability charts install already runs non-root (verified by
+      # rendering the pinned charts), but the namespace-wide carve-out keeps
+      # us decoupled from chart internals, same as Phase 3.
       exclude:
         any:
           - resources:
@@ -32,6 +39,7 @@ spec:
                 - linkerd
                 - linkerd-viz
                 - flagger
+                - monitoring
       validate:
         message: "Privileged containers are not allowed."
         deny:
@@ -48,6 +56,8 @@ spec:
               kinds:
                 - Pod
       # Phase 3 carve-out: see disallow-privileged above.
+      # Phase 4 carve-out (monitoring): promtail runs as root by design
+      # (host log access) — see disallow-privileged above.
       exclude:
         any:
           - resources:
@@ -55,6 +65,7 @@ spec:
                 - linkerd
                 - linkerd-viz
                 - flagger
+                - monitoring
       validate:
         message: "Running as root is not allowed — set spec.securityContext.runAsNonRoot to true."
         pattern:

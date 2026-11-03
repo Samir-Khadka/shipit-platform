@@ -8,6 +8,7 @@ resources:
   - pass-deployment.yaml
   - fail-deployment.yaml
   - excluded-namespace-deployment.yaml
+  - monitoring-namespace-deployment.yaml
 results:
   - policy: require-requests-limits
     rule: require-requests-limits
@@ -26,5 +27,12 @@ results:
     rule: require-requests-limits
     resources:
       - infra-deploy
+    kind: Deployment
+    result: pass
+  # Phase 4 carve-out: same for the monitoring namespace.
+  - policy: require-requests-limits
+    rule: require-requests-limits
+    resources:
+      - monitoring-deploy
     kind: Deployment
     result: pass

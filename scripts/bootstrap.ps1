@@ -117,6 +117,19 @@ if ($hasProxy) {
 kubectl -n shipit get canary shipit-api -o custom-columns=NAME:.metadata.name,PHASE:.status.phase 2>$null
 if ($LASTEXITCODE -ne 0) { Write-Host "    (canary resource not visible yet — Flagger may still be starting)" }
 
+# --- Observability (Phase 4) ------------------------------------------------
+# kube-prometheus-stack + Loki + Tempo via ArgoCD (sync wave 2),
+# ServiceMonitors/Rules/dashboards via observability-config (wave 3).
+Write-Host "==> Waiting for the observability stack (installed by ArgoCD)..."
+foreach ($app in @("kube-prometheus-stack", "loki", "tempo", "observability-config")) {
+  kubectl -n argocd wait --for=jsonpath='{.status.health.status}'=Healthy `
+    --timeout=900s "application/$app"
+  if ($LASTEXITCODE -ne 0) { Write-Warning "$app not Healthy yet — check the ArgoCD UI" }
+}
+Write-Host "==> SLO alert rules:"
+kubectl -n monitoring get prometheusrule shipit-api-slo -o custom-columns=NAME:.metadata.name 2>$null
+if ($LASTEXITCODE -ne 0) { Write-Host "    (shipit-api-slo not visible yet — observability-config may still be syncing)" }
+
 Write-Host ""
 Write-Host "Done. Useful next steps:"
 Write-Host "  ArgoCD UI:      kubectl -n argocd port-forward svc/argocd-server 8080:443   # https://localhost:8080"
@@ -126,3 +139,8 @@ Write-Host "  API version:    kubectl -n shipit port-forward svc/shipit-api 8000
 Write-Host "  Canary demo:    see scripts/demo-canary.md — push a good build, then a bad one"
 Write-Host "                  (FAULT_RATE=0.3), and watch Flagger roll it back"
 Write-Host "  linkerd-viz:    kubectl -n linkerd-viz port-forward svc/web 8084:8084  # https://localhost:8084"
+Write-Host ""
+Write-Host "  Phase 4 - Grafana:"
+Write-Host "    kubectl -n monitoring port-forward svc/kube-prometheus-stack-grafana 3000:80  # http://localhost:3000"
+Write-Host "    dashboards: 'ShipIt Golden Signals', 'ShipIt SLOs' (admin user is 'admin')"
+Write-Host "    admin password: [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String((kubectl -n monitoring get secret kube-prometheus-stack-grafana -o jsonpath='{.data.admin-password}')))"

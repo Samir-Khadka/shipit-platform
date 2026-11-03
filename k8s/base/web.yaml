@@ -22,7 +22,7 @@ spec:
       containers:
         - name: web
           # NOTE: tag is rewritten to :<sha> by CI on every main push.
-          image: ghcr.io/samir-khadka/shipit-web:5d1af9cb399aa5a637c46041b926962ffc5a0598
+          image: ghcr.io/samir-khadka/shipit-web:latest
           imagePullPolicy: Always
           ports:
             - name: http

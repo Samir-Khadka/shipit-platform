@@ -1,0 +1,118 @@
+# SLOs for shipit-api — recording rules + Google-SRE-style multiwindow
+# burn-rate alerts.
+#
+# SLO: 99.9% availability over 30d (error budget 0.1%). In practice the
+# free-tier Prometheus keeps 24h, so the SLI windows below are honest about
+# that — the alert math (burn rates) is window-agnostic and stays correct.
+#
+# Source of truth for the metric names: prometheus-fastapi-instrumentator
+# exposes http_request_duration_seconds_{bucket,count,sum} with labels
+# handler, method, status on the api's /metrics (scraped via servicemonitor-api.yaml).
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: shipit-api-slo
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/part-of: shipit
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: shipit-api.slo
+      interval: 30s
+      rules:
+        # Availability SLI: share of non-5xx responses.
+        - record: sli:shipit_api:http_availability:ratio_24h
+          expr: |
+            1 - (
+              sum(rate(http_request_duration_seconds_count{namespace="shipit",status=~"5.."}[24h]))
+              /
+              sum(rate(http_request_duration_seconds_count{namespace="shipit"}[24h]))
+            )
+        # Error budget consumed (fraction of the 0.1% budget).
+        - record: slo:shipit_api:error_budget_consumed:ratio_24h
+          expr: |
+            (1 - sli:shipit_api:http_availability:ratio_24h) / 0.001
+        # Burn rates for the dashboard (1x = spending budget at exactly the
+        # sustainable rate).
+        - record: slo:shipit_api:burn_rate:1h
+          expr: |
+            (
+              sum(rate(http_request_duration_seconds_count{namespace="shipit",status=~"5.."}[1h]))
+              /
+              sum(rate(http_request_duration_seconds_count{namespace="shipit"}[1h]))
+            ) / 0.001
+        - record: slo:shipit_api:burn_rate:6h
+          expr: |
+            (
+              sum(rate(http_request_duration_seconds_count{namespace="shipit",status=~"5.."}[6h]))
+              /
+              sum(rate(http_request_duration_seconds_count{namespace="shipit"}[6h]))
+            ) / 0.001
+
+    - name: shipit-api.alerts
+      interval: 30s
+      rules:
+        # Fast burn: 14.4x budget consumption over 1h AND 5m — budget gone in
+        # ~2 days at this rate. Pages (severity: critical).
+        - alert: ShipItApiFastBurn
+          expr: |
+            (
+              sum(rate(http_request_duration_seconds_count{namespace="shipit",status=~"5.."}[1h]))
+              /
+              sum(rate(http_request_duration_seconds_count{namespace="shipit"}[1h]))
+            ) > 0.0144
+            and
+            (
+              sum(rate(http_request_duration_seconds_count{namespace="shipit",status=~"5.."}[5m]))
+              /
+              sum(rate(http_request_duration_seconds_count{namespace="shipit"}[5m]))
+            ) > 0.0144
+          for: 2m
+          labels:
+            severity: critical
+            slo: shipit-api-availability
+          annotations:
+            summary: "shipit-api fast error-budget burn (14.4x)"
+            description: >-
+              5xx rate above 1.44% on both the 1h and 5m windows — the 30d
+              error budget burns out in ~2 days at this pace.
+        # Slow burn: 6x over 6h AND 30m — budget gone in ~5 days. Tickets
+        # (severity: warning).
+        - alert: ShipItApiSlowBurn
+          expr: |
+            (
+              sum(rate(http_request_duration_seconds_count{namespace="shipit",status=~"5.."}[6h]))
+              /
+              sum(rate(http_request_duration_seconds_count{namespace="shipit"}[6h]))
+            ) > 0.006
+            and
+            (
+              sum(rate(http_request_duration_seconds_count{namespace="shipit",status=~"5.."}[30m]))
+              /
+              sum(rate(http_request_duration_seconds_count{namespace="shipit"}[30m]))
+            ) > 0.006
+          for: 15m
+          labels:
+            severity: warning
+            slo: shipit-api-availability
+          annotations:
+            summary: "shipit-api slow error-budget burn (6x)"
+            description: >-
+              5xx rate above 0.6% on both the 6h and 30m windows — the 30d
+              error budget burns out in ~5 days at this pace.
+        # Latency: p99 above the 500ms SLO for 10 minutes (same threshold
+        # Flagger's canary analysis uses).
+        - alert: ShipItApiLatencyHigh
+          expr: |
+            histogram_quantile(0.99,
+              sum by (le) (rate(http_request_duration_seconds_bucket{namespace="shipit"}[5m]))
+            ) > 0.5
+          for: 10m
+          labels:
+            severity: warning
+            slo: shipit-api-latency
+          annotations:
+            summary: "shipit-api p99 latency above 500ms for 10m"
+            description: >-
+              p99 request latency has exceeded the 500ms SLO for 10 minutes.

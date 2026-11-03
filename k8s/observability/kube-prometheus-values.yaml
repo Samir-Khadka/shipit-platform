@@ -1,0 +1,89 @@
+# kube-prometheus-stack values — ShipIt Phase 4 (observability).
+# Pinned chart: 92.17.1 (prometheus-community). Verified in the Helm index 2026-11-03.
+#
+# COEXISTENCE — READ BEFORE TOUCHING:
+# Flagger's metricsServer points at http://prometheus.linkerd-viz:9090
+# (linkerd-viz's bundled Prometheus, installed in Phase 3). This stack is
+# ADDITIVE: it does not replace, disable, or scrape over linkerd-viz.
+# Do not remove linkerd-viz — the canary analysis depends on it.
+
+# --- free-tier footprint: 24h retention, modest resources -----------------
+prometheus:
+  prometheusSpec:
+    retention: 24h
+    retentionSize: 5GB
+    scrapeInterval: 15s
+    evaluationInterval: 15s
+    resources:
+      requests:
+        cpu: 200m
+        memory: 512Mi
+      limits:
+        cpu: 1000m
+        memory: 2Gi
+    storageSpec:
+      emptyDir: {}  # ephemeral; add a volumeClaimTemplate here for persistence
+      # Selectors default to {} (match everything) — the shipit-api
+      # ServiceMonitor/PrometheusRule need no special labels.
+
+alertmanager:
+  alertmanagerSpec:
+    retention: 24h
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        cpu: 200m
+        memory: 512Mi
+  config:
+    global:
+      resolve_timeout: 5m
+    route:
+      group_by: ['alertname', 'severity']
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 12h
+      receiver: 'null'
+    receivers:
+      - name: 'null'
+    # ── WIRE YOUR OWN RECEIVER HERE ─────────────────────────────────────
+    # Replace 'null' with a real receiver, e.g.:
+    #   receivers:
+    #     - name: 'slack'
+    #       slack_configs:
+    #         - api_url: 'https://hooks.slack.com/services/...'  # via Secret, never in git
+    #           channel: '#shipit-alerts'
+    # and point route.receiver at it. PagerDuty / Opsgenie / webhook all
+    # follow the same pattern — see the Alertmanager docs.
+
+grafana:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 512Mi
+  # Admin password is auto-generated into the
+  # kube-prometheus-stack-grafana Secret (see scripts/bootstrap.sh).
+  additionalDataSources:
+    - name: Loki
+      uid: loki
+      type: loki
+      url: http://loki.monitoring.svc.cluster.local:3100
+      access: proxy
+    - name: Tempo
+      uid: tempo
+      type: tempo
+      url: http://tempo.monitoring.svc.cluster.local:3200
+      access: proxy
+  sidecar:
+    dashboards:
+      enabled: true  # default, but explicit: watches ConfigMaps labelled grafana_dashboard=1
+      searchNamespace: ALL  # default; our dashboards live in the monitoring namespace
+      # (the default Prometheus datasource keeps uid "prometheus" — our
+      # dashboards reference it, plus the loki/tempo UIDs above)
+
+# node-exporter + kube-state-metrics stay enabled (chart defaults) — they feed
+# the Golden Signals dashboard's per-container CPU/memory panels via kubelet.

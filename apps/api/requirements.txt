@@ -1,2 +1,8 @@
 fastapi>=0.115,<1
 uvicorn>=0.30,<1
+# Phase 4 observability (verified on PyPI 2026-11-03):
+prometheus-fastapi-instrumentator>=8.0,<9
+# OTel instrumentation ships beta-only (0.x line); the exact pin installs
+# without --pre. Exporter is a stable 1.x.
+opentelemetry-instrumentation-fastapi==0.66b2
+opentelemetry-exporter-otlp-proto-http>=1.40,<2

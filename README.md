@@ -46,7 +46,7 @@ canary demo flips between releases.
 | 1 | k3s cluster + ArgoCD app-of-apps GitOps | ✅ done |
 | 2 | Supply-chain gates: Trivy blocking, cosign, Kyverno policies | ✅ done |
 | 3 | Flagger + Linkerd canaries with auto-rollback | ✅ done |
-| 4 | Observability: Loki, Tempo, SLO dashboards, Alertmanager | planned |
+| 4 | Observability: metrics, logs, traces, SLO dashboards, Alertmanager | ✅ done |
 | 5 | Chaos experiments, architecture diagram, runbook, demo video | planned |
 
 ## Free-tier notes
@@ -227,6 +227,83 @@ suite green (9/9, incl. 4 new FAULT_RATE tests), Kyverno CLI tests green
 indexes, release assets, chart values). The live canary demo itself runs on
 your machine via `scripts/` — same constraint as Phase 1 (this sandbox can't
 run k3s).*
+
+## Phase 4: observability — one Grafana tells the whole story
+
+Metrics, logs, and traces in one place, with SLO-based alerts instead of
+threshold spam. The api exposes `/metrics` (Prometheus format, always on and
+deliberately *not* fault-injected — the demo fault must not corrupt the
+signal it measures), ships OTel spans to Tempo, and promtail tails every
+pod's logs into Loki.
+
+```
+shipit-api --/metrics--> Prometheus (kube-prometheus-stack)
+           --OTLP:4318--> Tempo (traces)
+pod logs   --promtail--> Loki (logs)
+                                     |
+                              Grafana (one dashboard)
+                                     |
+SLO burn alerts --> Alertmanager (placeholder receiver — wire your own)
+```
+
+**Open it:** `./scripts/bootstrap.sh` (or `bootstrap.ps1`) waits for the
+stack, then:
+
+```bash
+kubectl -n monitoring port-forward svc/kube-prometheus-stack-grafana 3000:80
+# http://localhost:3000 — user 'admin'
+kubectl -n monitoring get secret kube-prometheus-stack-grafana \
+  -o jsonpath='{.data.admin-password}' | base64 -d; echo
+```
+
+Two dashboards ship as code (`k8s/observability/dashboards/*.json`,
+provisioned via the Grafana sidecar): **ShipIt Golden Signals** (request
+rate, error rate, p50/p95/p99, per-service CPU/memory) and **ShipIt SLOs**
+(availability SLI, error-budget consumed, 1h/6h burn rates, p99 vs the 500ms
+SLO). Edit a JSON, run `./scripts/build-dashboards.sh` (validates + rebuilds
+the ConfigMaps), commit, ArgoCD syncs.
+
+**The SLO alerts** (`k8s/observability/config/prometheusrule-slo.yaml`) —
+three alerts, Google-SRE multiwindow style, SLO 99.9% availability / 30d:
+
+- `ShipItApiFastBurn` (critical): 14.4× budget burn on 1h *and* 5m windows —
+  budget gone in ~2 days at this pace.
+- `ShipItApiSlowBurn` (warning): 6× burn on 6h *and* 30m — gone in ~5 days.
+- `ShipItApiLatencyHigh` (warning): p99 above 500ms for 10m (same threshold
+  Flagger's canary analysis uses).
+
+**Design notes worth knowing:**
+
+- **Two Prometheuses, on purpose.** Flagger's `metricsServer` points at
+  `http://prometheus.linkerd-viz:9090` — linkerd-viz's bundled Prometheus
+  (Phase 3) is untouched. The new kube-prometheus-stack is *additive*;
+  removing linkerd-viz would break canary analysis.
+- **Tracing is opt-in demo tooling** (like `FAULT_RATE`): OTel instruments
+  the api only when `OTEL_EXPORTER_OTLP_ENDPOINT` is set (default points at
+  Tempo in-cluster; empty = no-op). A dead collector never breaks requests —
+  proven by tests.
+- **Free-tier footprint:** Prometheus/Loki/Tempo all keep 24h (honest SLI
+  windows note this — the alert *math* is window-agnostic and stays correct),
+  modest requests/limits on every stateful component, ephemeral Prometheus
+  storage (add a volumeClaimTemplate for persistence).
+- **Alertmanager receiver is a documented placeholder** (`null` route with a
+  commented Slack/PagerDuty example) — no fake integrations.
+- **Kyverno:** `monitoring` joins the Phase 3-style carve-outs on
+  `require-requests-limits` and `require-pod-security` (promtail must run as
+  root to read host logs; some chart Jobs/Pods take no resources via
+  values) — documented in the policies, CLI-tested. `disallow-latest-tag`
+  passes as-is (every upstream image is pinned); `require-image-signatures`
+  only matches `ghcr.io/samir-khadka/shipit-*`, so upstream images are
+  unaffected.
+
+*Verified: yamllint + kubeconform on all new manifests, PrometheusRule/
+ServiceMonitor field-checked, dashboard JSON structurally validated
+(datasource UIDs match the provisioned `prometheus`/`loki`/`tempo`),
+all chart versions checked live in the Helm indexes
+(kube-prometheus-stack 92.17.1, loki-stack 2.10.3, tempo 1.24.4), api pytest
+suite green (14/14, incl. 5 new observability tests), Kyverno CLI green
+(16/16, incl. 2 new carve-out cases). Live install runs on your machine —
+same k3s constraint as ever.*
 
 ## Layout
 

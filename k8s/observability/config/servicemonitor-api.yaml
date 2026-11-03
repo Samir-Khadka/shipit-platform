@@ -1,0 +1,23 @@
+# ServiceMonitor — tells the kube-prometheus-stack Prometheus to scrape
+# shipit-api's /metrics (exposed by prometheus-fastapi-instrumentator).
+# The stack's selectors default to {} (match-all), so no special labels are
+# needed — the release label below is conventional only.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: shipit-api
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/part-of: shipit
+    release: kube-prometheus-stack
+spec:
+  namespaceSelector:
+    matchNames:
+      - shipit
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: shipit-api
+  endpoints:
+    - port: http  # the Service's port name (8000)
+      path: /metrics
+      interval: 15s

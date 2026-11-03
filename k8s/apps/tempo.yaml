@@ -1,0 +1,34 @@
+# Tempo — distributed tracing. Pinned: chart 1.24.4 (grafana).
+# Values in k8s/observability/tempo-values.yaml. The api ships OTLP spans to
+# it (OTEL_EXPORTER_OTLP_ENDPOINT in k8s/base/api.yaml); Grafana queries it
+# as the "tempo" datasource.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: tempo
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: shipit
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  project: default
+  sources:
+    - repoURL: https://grafana.github.io/helm-charts
+      chart: tempo
+      targetRevision: 1.24.4
+      helm:
+        valueFiles:
+          - $values/k8s/observability/tempo-values.yaml
+    - repoURL: https://github.com/Samir-Khadka/shipit-platform.git
+      targetRevision: main
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

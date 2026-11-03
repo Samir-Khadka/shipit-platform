@@ -1,0 +1,31 @@
+# loki-stack values — ShipIt Phase 4 (observability).
+# Pinned chart: 2.10.3 (grafana). Verified in the Helm index 2026-11-03.
+#
+# NOTE: loki-stack is deprecated upstream in favour of the loki chart's
+# monolithic mode, but it remains the lightest single-chart path (loki +
+# promtail, filesystem storage, no object store) for this demo. If this ever
+# needs to grow up: grafana/loki chart, singleBinary, + Alloy for shipping.
+test_pod:
+  enabled: false  # bats test pod — ArgoCD never runs helm tests; skip it
+loki:
+  persistence:
+    enabled: true
+    size: 5Gi
+  # The statefulset accepts resources; set modest ones for the free tier.
+  # (promtail's chart does not template container resources — covered by the
+  # Kyverno carve-out in k8s/security/policies/require-requests-limits.yaml)
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+  config:
+    table_manager:
+      retention_deletes_enabled: true
+      retention_period: 24h
+promtail:
+  enabled: true  # DaemonSet: tails /var/log/containers on every node → Loki
+# The chart's grafana/prometheus subcharts stay disabled (their defaults) —
+# kube-prometheus-stack owns Grafana and Prometheus here.

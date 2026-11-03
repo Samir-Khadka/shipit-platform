@@ -1,0 +1,21 @@
+# Phase 4 carve-out proof: simulates promtail, which must run as root to
+# read host container logs — no runAsNonRoot, in the excluded monitoring
+# namespace, so both pod-security rules must let it through. Shipit workloads
+# running as root elsewhere are still rejected (fail-root).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: monitoring-promtail
+  namespace: monitoring
+spec:
+  selector:
+    matchLabels:
+      app: monitoring
+  template:
+    metadata:
+      labels:
+        app: monitoring
+    spec:
+      containers:
+        - name: promtail
+          image: docker.io/grafana/promtail:3.5.1

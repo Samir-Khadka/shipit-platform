@@ -103,6 +103,19 @@ fi
 $KUBECTL -n shipit get canary shipit-api -o custom-columns=NAME:.metadata.name,PHASE:.status.phase 2>/dev/null \
   || echo "    (canary resource not visible yet — Flagger may still be starting)"
 
+# 5. Observability (Phase 4) ----------------------------------------------
+# kube-prometheus-stack + Loki + Tempo install via ArgoCD (sync wave 2),
+# our ServiceMonitors/Rules/dashboards via observability-config (wave 3).
+echo "==> Waiting for the observability stack (installed by ArgoCD)..."
+for app in kube-prometheus-stack loki tempo observability-config; do
+  $KUBECTL -n argocd wait --for=jsonpath='{.status.health.status}'=Healthy \
+    --timeout=900s "application/${app}" \
+    || echo "WARN: ${app} not Healthy yet — check the ArgoCD UI"
+done
+echo "==> SLO alert rules:"
+$KUBECTL -n monitoring get prometheusrule shipit-api-slo -o custom-columns=NAME:.metadata.name 2>/dev/null \
+  || echo "    (shipit-api-slo not visible yet — observability-config may still be syncing)"
+
 echo ""
 echo "Done. Useful next steps:"
 echo "  ArgoCD UI:      k3s kubectl -n argocd port-forward svc/argocd-server 8080:443"
@@ -115,3 +128,10 @@ echo "  Canary demo:    see scripts/demo-canary.md — push a good build, then a
 echo "                  bad one (FAULT_RATE=0.3), and watch Flagger roll it back"
 echo "  linkerd-viz:    k3s kubectl -n linkerd-viz port-forward svc/web 8084:8084"
 echo "                  then open https://localhost:8084 (dashboard)"
+echo ""
+echo "  Phase 4 — Grafana:"
+echo "    k3s kubectl -n monitoring port-forward svc/kube-prometheus-stack-grafana 3000:80"
+echo "    then open http://localhost:3000 — dashboards: 'ShipIt Golden Signals', 'ShipIt SLOs'"
+echo "    admin password: k3s kubectl -n monitoring get secret kube-prometheus-stack-grafana \\"
+echo "                      -o jsonpath='{.data.admin-password}' | base64 -d; echo"
+echo "    (admin user is 'admin')"

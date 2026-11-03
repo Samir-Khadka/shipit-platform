@@ -1,0 +1,27 @@
+# Observability config — our own ServiceMonitors, PrometheusRules (SLO
+# burn-rate alerts) and Grafana dashboards-as-code. Synced at wave 3, after
+# the kube-prometheus-stack CRDs exist.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: observability-config
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: shipit
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/Samir-Khadka/shipit-platform.git
+    targetRevision: main
+    path: k8s/observability/config
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
