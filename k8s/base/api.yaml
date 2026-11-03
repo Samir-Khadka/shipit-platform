@@ -23,7 +23,7 @@ spec:
         - name: api
           # NOTE: tag is rewritten to :<sha> by CI on every main push.
           # imagePullPolicy: Always keeps the mutable tag honest.
-          image: ghcr.io/samir-khadka/shipit-api:3041d18dbb42c9bd711da73da960fb813b9f0085
+          image: ghcr.io/samir-khadka/shipit-api:latest
           imagePullPolicy: Always
           ports:
             - name: http

@@ -1,0 +1,99 @@
+# Messaging API — onboarded external service (Samir-Khadka/messaging-api).
+#
+# FastAPI on 8000 (SMS/WhatsApp/RCS + OTP). SQLite lives at /data on an
+# emptyDir — ephemeral; production needs Postgres (see the Dockerfile note).
+# Image is published by that repo's shipit-publish workflow to GHCR; the tag
+# below is pinned to the verified build. Bump with:
+#   ./scripts/bump-service-image.sh messaging-api <sha>
+# (or let that repo's bump-shipit job do it once SHIPIT_BUMP_PAT exists).
+#
+# Needs the messaging-api-secrets Secret (MESSAGING_API_KEYS, OTP_PEPPER) —
+# see docs/onboarding-messaging.md. Without it the app starts in DEV_MODE
+# defaults, which must never serve real traffic.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: messaging-api
+  namespace: shipit
+  labels:
+    app.kubernetes.io/name: messaging-api
+    app.kubernetes.io/part-of: shipit
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: messaging-api
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: messaging-api
+        app.kubernetes.io/part-of: shipit
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001 # `appuser` in the runtime image
+      containers:
+        - name: api
+          image: ghcr.io/samir-khadka/messaging-api:430525b1
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8000
+          env:
+            - name: DEV_MODE
+              value: "false"
+            - name: DATABASE_PATH
+              value: /data/messaging.db
+            - name: MESSAGING_API_KEYS
+              valueFrom:
+                secretKeyRef:
+                  name: messaging-api-secrets
+                  key: MESSAGING_API_KEYS
+            - name: OTP_PEPPER
+              valueFrom:
+                secretKeyRef:
+                  name: messaging-api-secrets
+                  key: OTP_PEPPER
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+      volumes:
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: messaging-api
+  namespace: shipit
+  labels:
+    app.kubernetes.io/name: messaging-api
+    app.kubernetes.io/part-of: shipit
+spec:
+  selector:
+    app.kubernetes.io/name: messaging-api
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000

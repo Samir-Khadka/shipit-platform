@@ -1,0 +1,52 @@
+# Flagger Canary for the taskboard-api Deployment (onboarded service).
+#
+# Same pattern as k8s/canary/api-canary.yaml: Gateway API provider (Flagger
+# v1.45.0's `linkerd` provider needs SMI TrafficSplits, which Linkerd 2.14
+# lacks), 10% -> 50% -> 100% steps, rollback on success-rate < 99% or
+# p99 > 500ms via the canary-scoped MetricTemplates in metrics-services.yaml.
+# ArgoCD must not fight Flagger over replicas/selector — see the
+# ignoreDifferences on k8s/apps/taskboard.yaml.
+apiVersion: flagger.app/v1beta1
+kind: Canary
+metadata:
+  name: taskboard-api
+  namespace: shipit
+  labels:
+    app.kubernetes.io/name: taskboard-api
+    app.kubernetes.io/part-of: shipit
+spec:
+  provider: gatewayapi:v1
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: taskboard-api
+  service:
+    port: 3000
+    targetPort: 3000
+    gatewayRefs:
+      - name: taskboard-api
+        namespace: shipit
+        group: core
+        kind: Service
+        port: 3000
+  analysis:
+    interval: 30s
+    threshold: 3
+    stepWeights: [10, 50, 100]
+    maxWeight: 100
+    progressDeadlineSeconds: 180
+    metrics:
+      - name: canary-success-rate
+        templateRef:
+          name: taskboard-api-success-rate
+          namespace: shipit
+        thresholdRange:
+          min: 99
+        interval: 1m
+      - name: canary-p99-latency
+        templateRef:
+          name: taskboard-api-p99-latency
+          namespace: shipit
+        thresholdRange:
+          max: 500
+        interval: 1m

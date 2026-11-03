@@ -1,0 +1,73 @@
+# Suraksha — onboarded external service (Samir-Khadka/suraksha).
+#
+# FastAPI + Leaflet frontend served by the single uvicorn process on 8000.
+# Image is published by that repo's shipit-publish workflow to GHCR; the tag
+# below is pinned to the verified build. Bump with:
+#   ./scripts/bump-service-image.sh suraksha <sha>
+# (or let that repo's bump-shipit job do it once SHIPIT_BUMP_PAT exists).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: suraksha
+  namespace: shipit
+  labels:
+    app.kubernetes.io/name: suraksha
+    app.kubernetes.io/part-of: shipit
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: suraksha
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: suraksha
+        app.kubernetes.io/part-of: shipit
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001 # `suraksha` user in the runtime image
+      containers:
+        - name: api
+          image: ghcr.io/samir-khadka/suraksha:f0617a1c
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8000
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: suraksha
+  namespace: shipit
+  labels:
+    app.kubernetes.io/name: suraksha
+    app.kubernetes.io/part-of: shipit
+spec:
+  selector:
+    app.kubernetes.io/name: suraksha
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000

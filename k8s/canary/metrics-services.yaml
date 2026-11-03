@@ -1,0 +1,189 @@
+# Canary-scoped metrics for the onboarded services' Flagger analyses.
+#
+# Same rationale as k8s/canary/metrics.yaml: Flagger's built-in metrics use a
+# deployment=~ regex that matches both canary and primary, diluting the
+# signal. These templates use an EXACT deployment match so each analysis
+# judges only its own canary release. (PromQL shapes from Flagger v1.45.0's
+# Linkerd observer; queries hit the linkerd-viz Prometheus.)
+apiVersion: flagger.app/v1beta1
+kind: MetricTemplate
+metadata:
+  name: taskboard-api-success-rate
+  namespace: shipit
+  labels:
+    app.kubernetes.io/name: taskboard-api
+    app.kubernetes.io/part-of: shipit
+spec:
+  provider:
+    type: prometheus
+    address: http://prometheus.linkerd-viz:9090
+  query: |
+    sum(
+      rate(
+        response_total{
+          namespace="shipit",
+          deployment="taskboard-api",
+          classification!="failure",
+          direction="inbound"
+        }[{{ interval }}]
+      )
+    )
+    /
+    sum(
+      rate(
+        response_total{
+          namespace="shipit",
+          deployment="taskboard-api",
+          direction="inbound"
+        }[{{ interval }}]
+      )
+    )
+    * 100
+---
+apiVersion: flagger.app/v1beta1
+kind: MetricTemplate
+metadata:
+  name: taskboard-api-p99-latency
+  namespace: shipit
+  labels:
+    app.kubernetes.io/name: taskboard-api
+    app.kubernetes.io/part-of: shipit
+spec:
+  provider:
+    type: prometheus
+    address: http://prometheus.linkerd-viz:9090
+  query: |
+    histogram_quantile(
+      0.99,
+      sum(
+        rate(
+          response_latency_ms_bucket{
+            namespace="shipit",
+            deployment="taskboard-api",
+            direction="inbound"
+          }[{{ interval }}]
+        )
+      ) by (le)
+    )
+---
+apiVersion: flagger.app/v1beta1
+kind: MetricTemplate
+metadata:
+  name: messaging-api-success-rate
+  namespace: shipit
+  labels:
+    app.kubernetes.io/name: messaging-api
+    app.kubernetes.io/part-of: shipit
+spec:
+  provider:
+    type: prometheus
+    address: http://prometheus.linkerd-viz:9090
+  query: |
+    sum(
+      rate(
+        response_total{
+          namespace="shipit",
+          deployment="messaging-api",
+          classification!="failure",
+          direction="inbound"
+        }[{{ interval }}]
+      )
+    )
+    /
+    sum(
+      rate(
+        response_total{
+          namespace="shipit",
+          deployment="messaging-api",
+          direction="inbound"
+        }[{{ interval }}]
+      )
+    )
+    * 100
+---
+apiVersion: flagger.app/v1beta1
+kind: MetricTemplate
+metadata:
+  name: messaging-api-p99-latency
+  namespace: shipit
+  labels:
+    app.kubernetes.io/name: messaging-api
+    app.kubernetes.io/part-of: shipit
+spec:
+  provider:
+    type: prometheus
+    address: http://prometheus.linkerd-viz:9090
+  query: |
+    histogram_quantile(
+      0.99,
+      sum(
+        rate(
+          response_latency_ms_bucket{
+            namespace="shipit",
+            deployment="messaging-api",
+            direction="inbound"
+          }[{{ interval }}]
+        )
+      ) by (le)
+    )
+---
+apiVersion: flagger.app/v1beta1
+kind: MetricTemplate
+metadata:
+  name: suraksha-success-rate
+  namespace: shipit
+  labels:
+    app.kubernetes.io/name: suraksha
+    app.kubernetes.io/part-of: shipit
+spec:
+  provider:
+    type: prometheus
+    address: http://prometheus.linkerd-viz:9090
+  query: |
+    sum(
+      rate(
+        response_total{
+          namespace="shipit",
+          deployment="suraksha",
+          classification!="failure",
+          direction="inbound"
+        }[{{ interval }}]
+      )
+    )
+    /
+    sum(
+      rate(
+        response_total{
+          namespace="shipit",
+          deployment="suraksha",
+          direction="inbound"
+        }[{{ interval }}]
+      )
+    )
+    * 100
+---
+apiVersion: flagger.app/v1beta1
+kind: MetricTemplate
+metadata:
+  name: suraksha-p99-latency
+  namespace: shipit
+  labels:
+    app.kubernetes.io/name: suraksha
+    app.kubernetes.io/part-of: shipit
+spec:
+  provider:
+    type: prometheus
+    address: http://prometheus.linkerd-viz:9090
+  query: |
+    histogram_quantile(
+      0.99,
+      sum(
+        rate(
+          response_latency_ms_bucket{
+            namespace="shipit",
+            deployment="suraksha",
+            direction="inbound"
+          }[{{ interval }}]
+        )
+      ) by (le)
+    )

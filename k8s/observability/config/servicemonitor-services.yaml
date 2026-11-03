@@ -1,0 +1,62 @@
+# ServiceMonitors for the onboarded services — the kube-prometheus-stack
+# Prometheus scrapes their /metrics endpoints. (The stack's selectors
+# default to {} match-all; the release label is conventional.)
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: taskboard-api
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/part-of: shipit
+    release: kube-prometheus-stack
+spec:
+  namespaceSelector:
+    matchNames:
+      - shipit
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: taskboard-api
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: messaging-api
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/part-of: shipit
+    release: kube-prometheus-stack
+spec:
+  namespaceSelector:
+    matchNames:
+      - shipit
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: messaging-api
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: suraksha
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/part-of: shipit
+    release: kube-prometheus-stack
+spec:
+  namespaceSelector:
+    matchNames:
+      - shipit
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: suraksha
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s

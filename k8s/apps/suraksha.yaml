@@ -1,0 +1,38 @@
+# Suraksha (onboarded external service) — Phase: service onboarding.
+#
+# Syncs k8s/services/suraksha. The suraksha Deployment is Flagger-canaried
+# (see k8s/canary/canary-suraksha.yaml), so ArgoCD must not fight Flagger
+# over the canary's replicas or the apex Service selector.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: suraksha
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: shipit
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/Samir-Khadka/shipit-platform.git
+    targetRevision: main
+    path: k8s/services/suraksha
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: shipit
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - RespectIgnoreDifferences=true
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      name: suraksha
+      jsonPointers:
+        - /spec/replicas
+    - group: ""
+      kind: Service
+      name: suraksha
+      jsonPointers:
+        - /spec/selector

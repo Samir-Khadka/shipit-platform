@@ -1,0 +1,90 @@
+# TaskBoard API — onboarded external service (Samir-Khadka/taskboard-devops).
+#
+# Image is published by that repo's shipit-publish workflow to GHCR; the tag
+# below is pinned to the verified build. Bump with:
+#   ./scripts/bump-service-image.sh taskboard-devops-api <sha>
+# (or let that repo's bump-shipit job do it once SHIPIT_BUMP_PAT exists).
+#
+# Needs the taskboard-api-secret Secret (DATABASE_URL) — see
+# docs/onboarding-taskboard.md. The pod will CrashLoop without it.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: taskboard-api
+  namespace: shipit
+  labels:
+    app.kubernetes.io/name: taskboard-api
+    app.kubernetes.io/part-of: shipit
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: taskboard-api
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: taskboard-api
+        app.kubernetes.io/part-of: shipit
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000 # `node` user in the node:20-alpine runtime stage
+      containers:
+        - name: api
+          image: ghcr.io/samir-khadka/taskboard-devops-api:e0bef825
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 3000
+          env:
+            - name: NODE_ENV
+              value: production
+            - name: PORT
+              value: "3000"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: taskboard-api-secret
+                  key: DATABASE_URL
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: taskboard-api
+  namespace: shipit
+  labels:
+    app.kubernetes.io/name: taskboard-api
+    app.kubernetes.io/part-of: shipit
+spec:
+  selector:
+    app.kubernetes.io/name: taskboard-api
+  ports:
+    - name: http
+      port: 3000
+      targetPort: 3000

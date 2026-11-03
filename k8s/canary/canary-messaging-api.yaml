@@ -1,0 +1,51 @@
+# Flagger Canary for the messaging-api Deployment (onboarded service).
+#
+# Same pattern as k8s/canary/api-canary.yaml: Gateway API provider, 10% ->
+# 50% -> 100% steps, rollback on success-rate < 99% or p99 > 500ms via the
+# canary-scoped MetricTemplates in metrics-services.yaml. ArgoCD must not
+# fight Flagger over replicas/selector — see the ignoreDifferences on
+# k8s/apps/messaging.yaml.
+apiVersion: flagger.app/v1beta1
+kind: Canary
+metadata:
+  name: messaging-api
+  namespace: shipit
+  labels:
+    app.kubernetes.io/name: messaging-api
+    app.kubernetes.io/part-of: shipit
+spec:
+  provider: gatewayapi:v1
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: messaging-api
+  service:
+    port: 8000
+    targetPort: 8000
+    gatewayRefs:
+      - name: messaging-api
+        namespace: shipit
+        group: core
+        kind: Service
+        port: 8000
+  analysis:
+    interval: 30s
+    threshold: 3
+    stepWeights: [10, 50, 100]
+    maxWeight: 100
+    progressDeadlineSeconds: 180
+    metrics:
+      - name: canary-success-rate
+        templateRef:
+          name: messaging-api-success-rate
+          namespace: shipit
+        thresholdRange:
+          min: 99
+        interval: 1m
+      - name: canary-p99-latency
+        templateRef:
+          name: messaging-api-p99-latency
+          namespace: shipit
+        thresholdRange:
+          max: 500
+        interval: 1m

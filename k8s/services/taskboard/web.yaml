@@ -1,0 +1,79 @@
+# TaskBoard web UI — onboarded external service (Samir-Khadka/taskboard-devops).
+#
+# Static UI on nginx-unprivileged (port 8080); /api/* reverse-proxies to the
+# taskboard-api Service in this namespace. Not canaried — only the API is.
+# Image pinned to the verified build; bump with:
+#   ./scripts/bump-service-image.sh taskboard-devops-web <sha>
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: taskboard-web
+  namespace: shipit
+  labels:
+    app.kubernetes.io/name: taskboard-web
+    app.kubernetes.io/part-of: shipit
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: taskboard-web
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: taskboard-web
+        app.kubernetes.io/part-of: shipit
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101 # `nginx` user in nginxinc/nginx-unprivileged
+      containers:
+        - name: web
+          image: ghcr.io/samir-khadka/taskboard-devops-web:e0bef825
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: PORT
+              value: "8080"
+            - name: API_SCHEME
+              value: http
+            - name: API_HOST
+              value: taskboard-api:3000
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 20
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: taskboard-web
+  namespace: shipit
+  labels:
+    app.kubernetes.io/name: taskboard-web
+    app.kubernetes.io/part-of: shipit
+spec:
+  selector:
+    app.kubernetes.io/name: taskboard-web
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
