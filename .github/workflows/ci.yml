@@ -8,15 +8,18 @@ on:
 jobs:
   test-api:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - name: Install deps
-        run: pip install -r apps/api/requirements.txt pytest httpx
+        run: pip install -r requirements.txt pytest httpx
       - name: Run API tests
-        run: python -m pytest apps/api/tests -q
+        run: python -m pytest tests -q
 
   build:
     needs: test-api
