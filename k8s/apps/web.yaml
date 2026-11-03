@@ -1,0 +1,20 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: shipit-web
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: shipit
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/Samir-Khadka/shipit-platform.git
+    targetRevision: main
+    path: k8s/base
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: shipit
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

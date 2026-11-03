@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: shipit-worker
+  namespace: shipit
+  labels:
+    app.kubernetes.io/name: shipit-worker
+    app.kubernetes.io/part-of: shipit
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: shipit-worker
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: shipit-worker
+        app.kubernetes.io/part-of: shipit
+    spec:
+      containers:
+        - name: worker
+          # NOTE: tag is rewritten to :<sha> by CI on every main push.
+          image: ghcr.io/samir-khadka/shipit-worker:latest
+          imagePullPolicy: Always
+          env:
+            - name: API_URL
+              value: http://shipit-api:8000
+          # No probes: the worker exposes no HTTP server, it only polls the API.
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 128Mi
