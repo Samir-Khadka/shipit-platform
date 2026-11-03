@@ -1,0 +1,75 @@
+# Flagger Canary for the shipit-api Deployment — Phase 3 progressive delivery.
+#
+# How it works:
+#   1. On init, Flagger clones shipit-api into shipit-api-primary (stable),
+#      scales the original to 0, and points the apex Service at the primary.
+#   2. When a new image/tag lands on the target Deployment (via the normal
+#      CI -> tag-bump -> ArgoCD sync loop), Flagger scales the canary up and
+#      shifts traffic 10% -> 50% -> 100% using a Gateway API HTTPRoute that
+#      Linkerd's data plane enforces (client-side, so the caller must be
+#      meshed — see scripts/demo-canary.md).
+#   3. At every step it queries the Linkerd Prometheus (via the MetricTemplates
+#      in metrics.yaml). If the canary's success rate drops below 99% or its
+#      p99 latency exceeds 500ms, the release is halted and rolled back to the
+#      primary automatically — no human kubectl involved.
+#
+# Provider note: Flagger v1.45.0's `linkerd` provider drives SMI TrafficSplits,
+# which Linkerd 2.14 no longer implements. The supported Flagger+Linkerd path
+# (see flagger/kustomize/linkerd) is the Gateway API provider, so this Canary
+# uses `gatewayapi:v1` and Flagger manages an HTTPRoute attached to the apex
+# Service below.
+apiVersion: flagger.app/v1beta1
+kind: Canary
+metadata:
+  name: shipit-api
+  namespace: shipit
+  labels:
+    app.kubernetes.io/name: shipit-api
+    app.kubernetes.io/part-of: shipit
+spec:
+  provider: gatewayapi:v1
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: shipit-api
+  service:
+    port: 8000
+    targetPort: 8000
+    # The generated HTTPRoute attaches to this Service (parentRef). It must be
+    # the apex Service that clients call — Flagger rewrites its pod selector
+    # to the primary during initialization (see the ignoreDifferences on the
+    # shipit-api ArgoCD app: ArgoCD must NOT fight Flagger over it).
+    gatewayRefs:
+      - name: shipit-api
+        namespace: shipit
+        group: core
+        kind: Service
+        port: 8000
+  analysis:
+    interval: 30s
+    # Max failed metric checks before the canary is halted and rolled back.
+    threshold: 3
+    # Traffic steps: 10% -> 50% -> 100%, then promotion.
+    stepWeights: [10, 50, 100]
+    maxWeight: 100
+    # Give the canary 3 minutes to become ready before giving up on it
+    # (a canary that never passes readiness — e.g. FAULT_RATE=1.0 — rolls back
+    # here instead of on metrics).
+    progressDeadlineSeconds: 180
+    metrics:
+      - name: canary-success-rate
+        templateRef:
+          name: shipit-api-success-rate
+          namespace: shipit
+        # Roll back if the canary's own success rate drops below 99%.
+        thresholdRange:
+          min: 99
+        interval: 1m
+      - name: canary-p99-latency
+        templateRef:
+          name: shipit-api-p99-latency
+          namespace: shipit
+        # Roll back if the canary's p99 latency exceeds 500ms.
+        thresholdRange:
+          max: 500
+        interval: 1m

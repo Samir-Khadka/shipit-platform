@@ -21,6 +21,17 @@ spec:
           - resources:
               kinds:
                 - Pod
+      # Phase 3 carve-out (same rationale as require-requests-limits): the
+      # upstream Linkerd/Flagger charts manage their own pod security
+      # contexts; we pin their versions in k8s/apps/*.yaml instead of
+      # rewriting their specs. Still Enforce for all shipit workloads.
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - linkerd
+                - linkerd-viz
+                - flagger
       validate:
         message: "Privileged containers are not allowed."
         deny:
@@ -36,6 +47,14 @@ spec:
           - resources:
               kinds:
                 - Pod
+      # Phase 3 carve-out: see disallow-privileged above.
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - linkerd
+                - linkerd-viz
+                - flagger
       validate:
         message: "Running as root is not allowed — set spec.securityContext.runAsNonRoot to true."
         pattern:

@@ -18,3 +18,30 @@ spec:
     automated:
       prune: true
       selfHeal: true
+    syncOptions:
+      # RespectIgnoreDifferences: with selfHeal on, ArgoCD would otherwise
+      # revert Flagger's live mutations back to the git state on every sync.
+      - RespectIgnoreDifferences=true
+  # Flagger owns these fields at runtime — ArgoCD must not fight it:
+  # - Deployment /spec/replicas: Flagger scales the target (canary) to 0 after
+  #   init and up/down during analysis. Git says 2; the cluster says 0 most of
+  #   the time. Without this, selfHeal would constantly re-scale the canary.
+  # - Service /spec/selector: on init Flagger rewrites the apex Service
+  #   selector from {app.kubernetes.io/name: shipit-api} to
+  #   {app.kubernetes.io/name: shipit-api-primary} so direct (non-meshed)
+  #   traffic keeps hitting the stable primary. Reverting it would bypass the
+  #   canary split entirely.
+  # Flagger-generated resources (shipit-api-primary Deployment, -canary /
+  # -primary Services, the HTTPRoute) carry no ArgoCD tracking annotation, so
+  # prune leaves them alone.
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      name: shipit-api
+      jsonPointers:
+        - /spec/replicas
+    - group: ""
+      kind: Service
+      name: shipit-api
+      jsonPointers:
+        - /spec/selector

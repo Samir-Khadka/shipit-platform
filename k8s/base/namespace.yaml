@@ -4,3 +4,10 @@ metadata:
   name: shipit
   labels:
     app.kubernetes.io/part-of: shipit
+  annotations:
+    # Phase 3: inject the Linkerd sidecar into every shipit pod. The proxy is
+    # what enforces Flagger's HTTPRoute traffic split (client-side), so the
+    # api, worker, and any demo load-generator pods must all be meshed.
+    # (Applied by ArgoCD via the shipit-api app; pods are restarted for
+    # injection by the bootstrap script after Linkerd installs.)
+    linkerd.io/inject: enabled

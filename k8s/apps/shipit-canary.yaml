@@ -1,0 +1,25 @@
+# The canary definitions themselves (Canary + MetricTemplates for shipit-api).
+# Sync-wave 1: after Flagger's CRDs exist (flagger app, wave 0) and after the
+# shipit-api Deployment exists (shipit-api app, wave 0).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: shipit-canary
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: shipit
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/Samir-Khadka/shipit-platform.git
+    targetRevision: main
+    path: k8s/canary
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: shipit
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

@@ -1,0 +1,45 @@
+# Flagger — progressive delivery controller. Pinned: chart 1.45.0 (app 1.45.0).
+#
+# Flags mirror flagger/kustomize/linkerd (the supported Flagger+Linkerd setup):
+#   mesh-provider=gatewayapi:v1  -> Flagger manages a Gateway API HTTPRoute
+#      (v1) for traffic shifting; Linkerd's data plane enforces it.
+#      (Flagger's `linkerd` provider would drive SMI TrafficSplits, which
+#      Linkerd 2.14 no longer implements — hence the Gateway API provider.)
+#   metrics-server=http://prometheus.linkerd-viz:9090 -> Flagger queries the
+#      Prometheus bundled with linkerd-viz (no separate Prometheus in Phase 3).
+#   crd.create=true -> install Flagger's Canary/MetricTemplate CRDs
+#      (the chart defaults this to false).
+#   linkerdAuthPolicy.create=true -> AuthorizationPolicy letting Flagger's
+#      ServiceAccount query viz's Prometheus through the mesh.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: flagger
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: shipit
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  project: default
+  source:
+    repoURL: https://fluxcd-community.github.io/helm-charts
+    chart: flagger
+    targetRevision: 1.45.0
+    helm:
+      valuesObject:
+        meshProvider: gatewayapi:v1
+        metricsServer: http://prometheus.linkerd-viz:9090
+        crd:
+          create: true
+        linkerdAuthPolicy:
+          create: true
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: flagger
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

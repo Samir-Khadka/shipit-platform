@@ -20,6 +20,21 @@ spec:
           - resources:
               kinds:
                 - Pod
+      # Phase 3 carve-out: the Linkerd/Flagger upstream charts do not set
+      # cpu/memory requests+limits on all of their own control-plane
+      # components, and forking their pod specs just to satisfy a workload
+      # policy would couple us to chart internals. Their versions are still
+      # pinned in k8s/apps/*.yaml. The policy stays Enforce for everything
+      # else — including every shipit workload and every injected
+      # linkerd-proxy sidecar (whose resources ARE set via the
+      # linkerd-control-plane app's proxy.resources values).
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - linkerd
+                - linkerd-viz
+                - flagger
       validate:
         message: "CPU and memory requests and limits are required for every container."
         pattern:

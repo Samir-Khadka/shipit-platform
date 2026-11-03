@@ -1,0 +1,28 @@
+# linkerd-viz — dashboard + the bundled Prometheus that Flagger uses as its
+# metrics source (http://prometheus.linkerd-viz:9090). No separate Prometheus
+# is deployed in Phase 3; the full observability stack is Phase 4.
+# Pinned: chart 30.12.11 (linkerd/linkerd2 stable-2.14.10).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: linkerd-viz
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: shipit
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  project: default
+  source:
+    repoURL: https://helm.linkerd.io/stable
+    chart: linkerd-viz
+    targetRevision: 30.12.11
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: linkerd-viz
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

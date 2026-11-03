@@ -1,0 +1,20 @@
+# Simulates an upstream infra component (e.g. a Linkerd control-plane pod):
+# no resources set — but it lives in an excluded namespace, so the policy
+# must let it through. Proves the Phase 3 carve-out is intentional, not a hole.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: infra-deploy
+  namespace: linkerd
+spec:
+  selector:
+    matchLabels:
+      app: infra
+  template:
+    metadata:
+      labels:
+        app: infra
+    spec:
+      containers:
+        - name: controller
+          image: cr.l5d.io/linkerd/controller:stable-2.14.10

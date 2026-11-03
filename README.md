@@ -45,7 +45,7 @@ canary demo flips between releases.
 | 0 | Scaffold: demo microservice, Dockerfiles, CI → GHCR | ✅ done |
 | 1 | k3s cluster + ArgoCD app-of-apps GitOps | ✅ done |
 | 2 | Supply-chain gates: Trivy blocking, cosign, Kyverno policies | ✅ done |
-| 3 | Flagger + Linkerd canaries with auto-rollback | planned |
+| 3 | Flagger + Linkerd canaries with auto-rollback | ✅ done |
 | 4 | Observability: Loki, Tempo, SLO dashboards, Alertmanager | planned |
 | 5 | Chaos experiments, architecture diagram, runbook, demo video | planned |
 
@@ -165,17 +165,82 @@ The one thing deliberately *not* done: planting a fake vulnerability to force
 a red build — the gate's config is what's under test, and a passing scan is
 the honest claim.
 
+## Phase 3: progressive delivery — canaries with automatic rollback
+
+Push a release; Flagger + Linkerd shift traffic 10% → 50% → 100% while
+watching the canary's error budget. Burn the budget and the release rolls
+itself back — no human `kubectl` involved.
+
+```
+push to main → CI → ArgoCD syncs shipit-api → Flagger sees new pod template
+  → canary pods up, HTTPRoute splits 10/50/100 (Linkerd sidecars enforce it)
+  → 30s metric checks vs Linkerd Prometheus (viz-bundled; no separate stack)
+  → green: promote (primary := canary) | red: halt, canary → 0, primary serves
+```
+
+**Install it:** `./scripts/bootstrap.sh` (or `bootstrap.ps1`) — it installs the
+Gateway API CRDs (v1.7.0, pinned), then ArgoCD syncs Linkerd (CRDs 1.8.0 →
+control plane 1.16.11 → viz 30.12.11, all pinned) and Flagger 1.45.0, all as
+GitOps-managed Applications under `k8s/apps/`. The mesh injects a sidecar
+into every `shipit` pod (`linkerd.io/inject: enabled` on the namespace).
+
+**Demo it:** `scripts/demo-canary.md` — the full walkthrough: ship a good
+`v2.0.0` and watch it promote, then ship a faulty `v3.0.0` with
+`FAULT_RATE=0.3` (a demo-only knob in `apps/api` that 500s `/echo` and
+`/health` at the configured probability, default `0` = off) and watch
+Flagger halt the analysis and roll back to the primary on metrics alone.
+
+**Design notes worth knowing:**
+
+- **Provider:** Flagger 1.45.0's `linkerd` provider drives SMI TrafficSplits,
+  which Linkerd 2.14 no longer implements. The supported path (mirroring
+  `flagger/kustomize/linkerd`, verified against the Flagger source) is
+  `mesh-provider=gatewayapi:v1`: Flagger manages a Gateway API `HTTPRoute`
+  attached to the apex Service, Linkerd's data plane enforces the split.
+- **Canary-scoped metrics** (`k8s/canary/metrics.yaml`): Flagger's built-in
+  Linkerd queries use `deployment=~"{{ target }}"`, a regex that also matches
+  the `-primary` deployment — the primary's healthy traffic would dilute the
+  canary's signal. The custom MetricTemplates use an exact
+  `deployment="shipit-api"` match, so the analysis judges the canary alone:
+  success rate < 99% or p99 > 500ms → rollback.
+- **ArgoCD ↔ Flagger truce** (`k8s/apps/api.yaml`): Flagger mutates the
+  Deployment's `/spec/replicas` and the apex Service's `/spec/selector` at
+  runtime; `ignoreDifferences` + `RespectIgnoreDifferences=true` stop selfHeal
+  from reverting them. Flagger-created resources carry no ArgoCD tracking
+  annotation, so prune leaves them alone.
+- **Kyverno compatibility:** `require-image-signatures` only matches
+  `ghcr.io/samir-khadka/shipit-*` (upstream images unaffected).
+  `linkerd`/`linkerd-viz`/`flagger` namespaces are explicitly excluded from
+  `require-requests-limits` and `require-pod-security` — documented in the
+  policies, with a CLI test proving the carve-out. Injected `linkerd-proxy`
+  sidecars get resources from the control-plane app's `proxy.resources`
+  values, so shipit pods still pass every gate.
+- **Client-side routing caveat:** the split is enforced in the *caller's*
+  sidecar, so canary traffic must originate inside the mesh — the demo's load
+  generator runs as a Deployment in the `shipit` namespace. Port-forwards from
+  your laptop always hit the primary (handy for confirming the rollback).
+
+*Verified: manifests pass yamllint + kubeconform (Kubernetes 1.33; CRDs
+validated field-by-field against the Flagger v1.45.0 source), api pytest
+suite green (9/9, incl. 4 new FAULT_RATE tests), Kyverno CLI tests green
+(9/9, incl. the new carve-out case), all version pins checked live (Helm
+indexes, release assets, chart values). The live canary demo itself runs on
+your machine via `scripts/` — same constraint as Phase 1 (this sandbox can't
+run k3s).*
+
 ## Layout
 
 ```
-apps/api/        FastAPI service (/health, /version, /echo, /count)
+apps/api/        FastAPI service (/health, /version, /echo, /count; FAULT_RATE demo fault injector)
 apps/worker/     Node.js health-poller (zero deps)
 apps/web/        static frontend showing the serving API version
 docker/          container conventions
 k8s/base/        Namespace + Deployments/Services for api, worker, web
 k8s/apps/        ArgoCD Applications (one per service) — the app-of-apps leaves
 k8s/argocd/      root Application (shipit-root) pointing at k8s/apps
+k8s/canary/      Flagger Canary + MetricTemplates for shipit-api (Phase 3)
 k8s/security/    ClusterPolicies (Kyverno) + offline CLI tests proving them
-scripts/         bootstrap.sh (Linux/k3s) and bootstrap.ps1 (Windows/k3d)
+scripts/         bootstrap.sh (Linux/k3s) and bootstrap.ps1 (Windows/k3d),
+                 demo-canary.md (the canary walkthrough)
 .github/         CI: test → build → Trivy scan → push → cosign sign → bump image tags
 ```

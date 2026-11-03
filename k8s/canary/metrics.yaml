@@ -1,0 +1,74 @@
+# Canary-scoped metrics for the shipit-api Flagger analysis — Phase 3.
+#
+# Why custom templates instead of Flagger's built-in request-success-rate /
+# request-duration metrics? The built-ins query
+# `deployment=~"{{ target }}"` — a REGEX that matches both the canary
+# (`shipit-api`) and the primary (`shipit-api-primary`) deployments, so the
+# primary's healthy traffic dilutes the canary's signal. These templates use
+# an EXACT match (`deployment="shipit-api"`) so the analysis judges the
+# canary release — and only the canary release — on its own error budget.
+# (PromQL shapes taken from Flagger v1.45.0's own Linkerd observer.)
+#
+# Both templates query the Prometheus bundled with linkerd-viz — Phase 4
+# brings the full observability stack; until then this is Flagger's only
+# metrics source and nothing else is deployed.
+apiVersion: flagger.app/v1beta1
+kind: MetricTemplate
+metadata:
+  name: shipit-api-success-rate
+  namespace: shipit
+  labels:
+    app.kubernetes.io/name: shipit-api
+    app.kubernetes.io/part-of: shipit
+spec:
+  provider:
+    type: prometheus
+    address: http://prometheus.linkerd-viz:9090
+  query: |
+    sum(
+      rate(
+        response_total{
+          namespace="shipit",
+          deployment="shipit-api",
+          classification!="failure",
+          direction="inbound"
+        }[{{ interval }}]
+      )
+    )
+    /
+    sum(
+      rate(
+        response_total{
+          namespace="shipit",
+          deployment="shipit-api",
+          direction="inbound"
+        }[{{ interval }}]
+      )
+    )
+    * 100
+---
+apiVersion: flagger.app/v1beta1
+kind: MetricTemplate
+metadata:
+  name: shipit-api-p99-latency
+  namespace: shipit
+  labels:
+    app.kubernetes.io/name: shipit-api
+    app.kubernetes.io/part-of: shipit
+spec:
+  provider:
+    type: prometheus
+    address: http://prometheus.linkerd-viz:9090
+  query: |
+    histogram_quantile(
+      0.99,
+      sum(
+        rate(
+          response_latency_ms_bucket{
+            namespace="shipit",
+            deployment="shipit-api",
+            direction="inbound"
+          }[{{ interval }}]
+        )
+      ) by (le)
+    )

@@ -7,6 +7,7 @@ policies:
 resources:
   - pass-deployment.yaml
   - fail-deployment.yaml
+  - excluded-namespace-deployment.yaml
 results:
   - policy: require-requests-limits
     rule: require-requests-limits
@@ -20,3 +21,10 @@ results:
       - fail-deploy
     kind: Deployment
     result: fail
+  # Phase 3 carve-out: upstream infra namespaces are excluded on purpose.
+  - policy: require-requests-limits
+    rule: require-requests-limits
+    resources:
+      - infra-deploy
+    kind: Deployment
+    result: pass

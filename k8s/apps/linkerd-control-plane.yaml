@@ -1,0 +1,43 @@
+# Linkerd control plane — the service mesh. Pinned: chart 1.16.11
+# (linkerd/linkerd2 stable-2.14.10). Syncs after linkerd-crds (wave -1).
+#
+# proxy.resources matters for the Phase 2 Kyverno gate: every pod in the
+# shipit namespace gets a linkerd-proxy sidecar injected, and the
+# require-requests-limits ClusterPolicy (Enforce) rejects containers without
+# cpu/memory requests+limits. These values are baked into the injector config
+# so every sidecar — including Flagger's future canary pods — complies.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: linkerd-control-plane
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: shipit
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  project: default
+  source:
+    repoURL: https://helm.linkerd.io/stable
+    chart: linkerd-control-plane
+    targetRevision: 1.16.11
+    helm:
+      valuesObject:
+        # Resources for every injected linkerd-proxy sidecar (see note above).
+        proxy:
+          resources:
+            cpu:
+              request: 100m
+              limit: 500m
+            memory:
+              request: 64Mi
+              limit: 256Mi
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: linkerd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

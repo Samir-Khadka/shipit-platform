@@ -8,6 +8,8 @@
 set -euo pipefail
 
 ARGOCD_VERSION="v3.5.7"
+# Phase 3 pins — verified live (HTTP 200 on the release assets / Helm index).
+GATEWAY_API_VERSION="v1.7.0" # standard-install.yaml serves HTTPRoute v1
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 if [ "$(id -u)" -ne 0 ]; then
@@ -39,6 +41,16 @@ fi
 echo "==> Waiting for ArgoCD server..."
 $KUBECTL -n argocd wait --for=condition=available --timeout=600s deployment/argocd-server
 
+# 2.5 Gateway API CRDs (Phase 3) -----------------------------------------
+# Flagger's Gateway API provider creates HTTPRoute objects; Linkerd's
+# policy controller enforces them. Plain upstream CRDs — applied here (not
+# via ArgoCD) because there is no Helm chart in the standard flow and
+# vendoring ~2MB of generated CRDs into the repo would just be noise.
+# Installed BEFORE the root app so the CRDs exist before Flagger syncs.
+echo "==> Installing Gateway API CRDs ${GATEWAY_API_VERSION}..."
+$KUBECTL apply -f "https://github.com/kubernetes-sigs/gateway-api/releases/download/${GATEWAY_API_VERSION}/standard-install.yaml"
+$KUBECTL wait --for=condition=Established --timeout=120s crd/httproutes.gateway.networking.k8s.io
+
 # 3. App-of-apps --------------------------------------------------------
 echo "==> Applying the root app-of-apps..."
 $KUBECTL apply -f "${REPO_ROOT}/k8s/argocd/root-app.yaml"
@@ -60,6 +72,37 @@ echo "==> ClusterPolicies now enforced:"
 $KUBECTL get clusterpolicies -o custom-columns=NAME:.metadata.name,ACTION:.spec.validationFailureAction 2>/dev/null \
   || echo "WARN: ClusterPolicies not visible yet — Kyverno may still be installing"
 
+# 4. Service mesh + progressive delivery (Phase 3) ------------------------
+echo "==> Waiting for Linkerd + Flagger (installed by ArgoCD)..."
+for app in linkerd-crds linkerd-control-plane linkerd-viz flagger; do
+  $KUBECTL -n argocd wait --for=jsonpath='{.status.health.status}'=Healthy \
+    --timeout=600s "application/${app}" \
+    || echo "WARN: ${app} not Healthy yet — check the ArgoCD UI"
+done
+
+# The linkerd.io/inject annotation on the shipit namespace only affects pods
+# created AFTER it syncs. On a re-run over an existing cluster the demo pods
+# predate it, so restart them to get the sidecar (fresh clusters don't need
+# this, and the restart is a harmless rolling update there).
+echo "==> Restarting shipit workloads so the Linkerd sidecar is injected..."
+$KUBECTL -n shipit rollout restart deployment/shipit-api deployment/shipit-worker deployment/shipit-web
+$KUBECTL -n shipit rollout status --timeout=300s deployment/shipit-api \
+  || echo "WARN: shipit-api rollout — Flagger may have scaled it to 0 already (normal after init)"
+
+echo "==> Waiting for the canary definitions (installed by ArgoCD)..."
+$KUBECTL -n argocd wait --for=jsonpath='{.status.health.status}'=Healthy \
+  --timeout=600s "application/shipit-canary" \
+  || echo "WARN: shipit-canary not Healthy yet — check the ArgoCD UI"
+
+echo "==> Mesh check:"
+if $KUBECTL -n shipit get pods -o jsonpath='{range .items[*]}{.metadata.name}{" "}{range .spec.containers[*]}{.name}{" "}{end}{"\n"}{end}' 2>/dev/null | grep -q linkerd-proxy; then
+  echo "    linkerd-proxy sidecar present on shipit pods"
+else
+  echo "    WARN: no linkerd-proxy sidecar found — run: k3s kubectl -n shipit rollout restart deployment/shipit-api deployment/shipit-worker deployment/shipit-web"
+fi
+$KUBECTL -n shipit get canary shipit-api -o custom-columns=NAME:.metadata.name,PHASE:.status.phase 2>/dev/null \
+  || echo "    (canary resource not visible yet — Flagger may still be starting)"
+
 echo ""
 echo "Done. Useful next steps:"
 echo "  ArgoCD UI:      k3s kubectl -n argocd port-forward svc/argocd-server 8080:443"
@@ -68,3 +111,7 @@ echo "                    -o jsonpath='{.data.password}' | base64 -d; echo"
 echo "  Watch pods:     k3s kubectl -n shipit get pods -w"
 echo "  API version:    k3s kubectl -n shipit port-forward svc/shipit-api 8000:8000"
 echo "                  then: curl localhost:8000/version"
+echo "  Canary demo:    see scripts/demo-canary.md — push a good build, then a"
+echo "                  bad one (FAULT_RATE=0.3), and watch Flagger roll it back"
+echo "  linkerd-viz:    k3s kubectl -n linkerd-viz port-forward svc/web 8084:8084"
+echo "                  then open https://localhost:8084 (dashboard)"
