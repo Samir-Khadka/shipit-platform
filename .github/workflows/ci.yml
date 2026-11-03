@@ -56,6 +56,8 @@ jobs:
   bump-tags:
     # Closes the GitOps loop: after images land in GHCR, write the new
     # :<sha> tags back into k8s/base so ArgoCD syncs them automatically.
+    # Race-safe: works from the latest origin/main, yields when a newer
+    # run owns the bump, and retries the push on contention.
     needs: build
     if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !contains(github.event.head_commit.message, '[ci]')
     runs-on: ubuntu-latest
@@ -63,17 +65,37 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Bump image tags to the new sha
         run: |
+          set -e
           SHA="${{ github.sha }}"
-          for svc in api worker web; do
-            sed -i -E "s#(image: ghcr.io/samir-khadka/shipit-${svc}:)[^[:space:]]+#\1${SHA}#" k8s/base/${svc}.yaml
-          done
-          git diff --stat -- k8s/base/
-      - name: Commit and push tag bump
-        run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add k8s/base/
-          git diff --cached --quiet || git commit -m "[ci] bump image tags to ${{ github.sha }}"
-          git push
+          for attempt in 1 2 3; do
+            git fetch origin main
+            HEAD_NOW="$(git rev-parse origin/main)"
+            if [ "${HEAD_NOW}" != "${SHA}" ]; then
+              echo "main has moved on to ${HEAD_NOW}; a newer run owns the tag bump — skipping"
+              exit 0
+            fi
+            git reset --hard origin/main
+            for svc in api worker web; do
+              sed -i -E "s#(image: ghcr.io/samir-khadka/shipit-${svc}:)[^[:space:]]+#\1${SHA}#" k8s/base/${svc}.yaml
+            done
+            git add k8s/base/
+            if git diff --cached --quiet; then
+              echo "image tags already at ${SHA}; nothing to do"
+              exit 0
+            fi
+            git commit -m "[ci] bump image tags to ${SHA}"
+            if git push origin main; then
+              echo "tag bump pushed"
+              exit 0
+            fi
+            echo "push raced (attempt ${attempt}/3), retrying..."
+            sleep 10
+          done
+          echo "failed to push tag bump after 3 attempts" >&2
+          exit 1
